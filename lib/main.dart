@@ -9,7 +9,7 @@ import 'package:firebase_core/firebase_core.dart';
 
 import 'dart:io';
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import 'services/jumaa_connectivity_service.dart';
 
@@ -235,17 +235,37 @@ class ApartmentApp extends StatefulWidget {
 class _ApartmentAppState extends State<ApartmentApp> {
   ThemeMode _themeMode = ThemeMode.light;
 
+  StreamSubscription<AuthState>? _authSubscription;
+
+  String _themePreferenceKey(String userId) {
+    return 'jumaa_dark_mode_$userId';
+  }
+
   @override
   void initState() {
     super.initState();
+
+    _authSubscription = Supabase.instance.client.auth.onAuthStateChange
+        .listen((_) {
+      _loadThemeMode();
+    });
+
     _loadThemeMode();
   }
 
   Future<void> _loadThemeMode() async {
-    final prefs = await SharedPreferences.getInstance();
-    final enabled = prefs.getBool('jumaa_dark_mode') ?? false;
+    final client = Supabase.instance.client;
+    final userId = client.auth.currentUser?.id;
 
-    if (!mounted) return;
+    final prefs = await SharedPreferences.getInstance();
+
+    final enabled = userId == null
+        ? false
+        : prefs.getBool(_themePreferenceKey(userId)) ?? false;
+
+    if (!mounted || client.auth.currentUser?.id != userId) {
+      return;
+    }
 
     setState(() {
       _themeMode = enabled ? ThemeMode.dark : ThemeMode.light;
@@ -253,15 +273,31 @@ class _ApartmentAppState extends State<ApartmentApp> {
   }
 
   Future<void> _setDarkMode(bool enabled) async {
+    final client = Supabase.instance.client;
+    final userId = client.auth.currentUser?.id;
+
+    if (userId == null) return;
+
     final prefs = await SharedPreferences.getInstance();
 
-    await prefs.setBool('jumaa_dark_mode', enabled);
+    await prefs.setBool(
+      _themePreferenceKey(userId),
+      enabled,
+    );
 
-    if (!mounted) return;
+    if (!mounted || client.auth.currentUser?.id != userId) {
+      return;
+    }
 
     setState(() {
       _themeMode = enabled ? ThemeMode.dark : ThemeMode.light;
     });
+  }
+
+  @override
+  void dispose() {
+    _authSubscription?.cancel();
+    super.dispose();
   }
 
   @override
@@ -4288,7 +4324,7 @@ class _PublicPropertyDetailsPageState extends State<PublicPropertyDetailsPage> {
         .toList();
 
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: Theme.of(context).colorScheme.surface,
       body: CustomScrollView(
         slivers: [
           SliverAppBar(
@@ -4335,9 +4371,9 @@ class _PublicPropertyDetailsPageState extends State<PublicPropertyDetailsPage> {
                         Expanded(
                           child: Text(
                             property.location,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 15,
-                              color: Colors.black54,
+                              color: Theme.of(context).colorScheme.onSurfaceVariant,
                               height: 1.4,
                             ),
                           ),
@@ -4350,18 +4386,18 @@ class _PublicPropertyDetailsPageState extends State<PublicPropertyDetailsPage> {
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Icon(
+                        Icon(
                           Icons.home_outlined,
                           size: 20,
-                          color: Colors.black45,
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
                         ),
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(
                             property.address,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 14,
-                              color: Colors.black54,
+                              color: Theme.of(context).colorScheme.onSurfaceVariant,
                               height: 1.4,
                             ),
                           ),
@@ -4407,8 +4443,8 @@ class _PublicPropertyDetailsPageState extends State<PublicPropertyDetailsPage> {
                     property.description.trim().isEmpty
                         ? 'This apartment offers comfortable living spaces in a convenient location. Contact the landlord to learn more about availability and the available units.'
                         : property.description,
-                    style: const TextStyle(
-                      color: Colors.black54,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
                       height: 1.6,
                       fontSize: 14.5,
                     ),
@@ -4445,17 +4481,17 @@ class _PublicPropertyDetailsPageState extends State<PublicPropertyDetailsPage> {
                       width: double.infinity,
                       padding: const EdgeInsets.all(18),
                       decoration: BoxDecoration(
-                        color: Colors.grey.shade100,
+                        color: Theme.of(context).colorScheme.surfaceContainerHighest,
                         borderRadius: BorderRadius.circular(16),
                       ),
-                      child: const Row(
+                      child: Row(
                         children: [
                           Icon(Icons.info_outline, color: Colors.grey),
                           SizedBox(width: 10),
                           Expanded(
                             child: Text(
                               'There are currently no vacant units in this apartment.',
-                              style: TextStyle(color: Colors.black54),
+                              style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
                             ),
                           ),
                         ],
@@ -4663,7 +4699,7 @@ class _PublicPropertyDetailsPageState extends State<PublicPropertyDetailsPage> {
                 ),
                 Text(
                   label,
-                  style: const TextStyle(fontSize: 11, color: Colors.black54),
+                  style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSurfaceVariant),
                 ),
               ],
             ),
@@ -4677,7 +4713,7 @@ class _PublicPropertyDetailsPageState extends State<PublicPropertyDetailsPage> {
     return Card(
       elevation: 0,
       margin: const EdgeInsets.only(bottom: 10),
-      color: Colors.grey.shade50,
+      color: Theme.of(context).colorScheme.surfaceContainerLow,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: Padding(
         padding: const EdgeInsets.all(15),
@@ -4713,7 +4749,7 @@ class _PublicPropertyDetailsPageState extends State<PublicPropertyDetailsPage> {
                   const SizedBox(height: 4),
                   Text(
                     unit.type,
-                    style: const TextStyle(color: Colors.black54, fontSize: 13),
+                    style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 13),
                   ),
                   const SizedBox(height: 4),
                   Text(
@@ -4730,13 +4766,13 @@ class _PublicPropertyDetailsPageState extends State<PublicPropertyDetailsPage> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
               decoration: BoxDecoration(
-                color: Colors.green.shade50,
+                color: Theme.of(context).colorScheme.tertiaryContainer,
                 borderRadius: BorderRadius.circular(20),
               ),
               child: Text(
                 'Available',
                 style: TextStyle(
-                  color: Colors.green.shade700,
+                  color: Theme.of(context).colorScheme.onTertiaryContainer,
                   fontSize: 11,
                   fontWeight: FontWeight.bold,
                 ),
@@ -4776,8 +4812,8 @@ class _PublicPropertyDetailsPageState extends State<PublicPropertyDetailsPage> {
         builder: (sheetContext) {
           return Container(
             padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
-            decoration: const BoxDecoration(
-              color: Colors.white,
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.surface,
               borderRadius: BorderRadius.vertical(top: Radius.circular(25)),
             ),
             child: SafeArea(
@@ -4828,7 +4864,7 @@ class _PublicPropertyDetailsPageState extends State<PublicPropertyDetailsPage> {
                     width: double.infinity,
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                      color: Colors.grey.shade100,
+                      color: Theme.of(context).colorScheme.surfaceContainerHighest,
                       borderRadius: BorderRadius.circular(16),
                     ),
                     child: Row(
@@ -4849,10 +4885,9 @@ class _PublicPropertyDetailsPageState extends State<PublicPropertyDetailsPage> {
                     ),
                   ),
                   const SizedBox(height: 14),
-                  const Text(
-                    'This is the general area provided for this property. '
+                  Text('This is the general area provided for this property. '
                     'An exact GPS location has not been provided by the property owner.',
-                    style: TextStyle(color: Colors.black54, fontSize: 13),
+                    style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 13),
                   ),
                   const SizedBox(height: 18),
                   SizedBox(
@@ -4977,8 +5012,8 @@ class _PublicPropertyDetailsPageState extends State<PublicPropertyDetailsPage> {
         builder: (sheetContext) {
           return Container(
             padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
-            decoration: const BoxDecoration(
-              color: Colors.white,
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.surface,
               borderRadius: BorderRadius.vertical(top: Radius.circular(25)),
             ),
             child: SafeArea(
@@ -5031,7 +5066,7 @@ class _PublicPropertyDetailsPageState extends State<PublicPropertyDetailsPage> {
 
                   Text(
                     '${property.location}, ${property.subcounty}, ${property.county}',
-                    style: const TextStyle(color: Colors.black54, fontSize: 14),
+                    style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 14),
                   ),
 
                   const SizedBox(height: 18),
@@ -5040,7 +5075,7 @@ class _PublicPropertyDetailsPageState extends State<PublicPropertyDetailsPage> {
                     width: double.infinity,
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                      color: Colors.grey.shade100,
+                      color: Theme.of(context).colorScheme.surfaceContainerHighest,
                       borderRadius: BorderRadius.circular(16),
                     ),
                     child: Column(
@@ -5067,9 +5102,9 @@ class _PublicPropertyDetailsPageState extends State<PublicPropertyDetailsPage> {
                           children: [
                             const Icon(Icons.straighten_rounded),
                             const SizedBox(width: 12),
-                            const Text(
+                            Text(
                               'Approx. distance',
-                              style: TextStyle(color: Colors.black54),
+                              style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
                             ),
                             const Spacer(),
                             Text(
@@ -5087,11 +5122,10 @@ class _PublicPropertyDetailsPageState extends State<PublicPropertyDetailsPage> {
 
                   const SizedBox(height: 10),
 
-                  const Text(
-                    'Google Maps will calculate the actual road route, '
+                  Text('Google Maps will calculate the actual road route, '
                     'driving distance and travel time from your current '
                     'location to this apartment.',
-                    style: TextStyle(color: Colors.black54, fontSize: 13),
+                    style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 13),
                   ),
 
                   const SizedBox(height: 18),
@@ -5185,8 +5219,8 @@ class _PublicPropertyDetailsPageState extends State<PublicPropertyDetailsPage> {
               ),
               child: Container(
                 constraints: const BoxConstraints(maxHeight: 720),
-                decoration: const BoxDecoration(
-                  color: Colors.white,
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.surface,
                   borderRadius: BorderRadius.vertical(top: Radius.circular(25)),
                 ),
                 child: SingleChildScrollView(
@@ -5214,8 +5248,8 @@ class _PublicPropertyDetailsPageState extends State<PublicPropertyDetailsPage> {
 
                       Text(
                         property.name,
-                        style: const TextStyle(
-                          color: Colors.black54,
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
                           fontSize: 14,
                         ),
                       ),
@@ -5396,10 +5430,10 @@ class _PublicPropertyDetailsPageState extends State<PublicPropertyDetailsPage> {
 
                       const SizedBox(height: 8),
 
-                      const Center(
+                      Center(
                         child: Text(
                           'The landlord will review your booking request.',
-                          style: TextStyle(color: Colors.black45, fontSize: 12),
+                          style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12),
                         ),
                       ),
                     ],
