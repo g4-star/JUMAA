@@ -19796,6 +19796,26 @@ class _TenantChatConversationScreenState
             _handleRealtimeMessage(row);
           },
         )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.update,
+          schema: 'public',
+          table: 'messages',
+          callback: (payload) {
+            final row = Map<String, dynamic>.from(payload.newRecord);
+            if (row['conversation_id']?.toString() != widget.conversationId) {
+              return;
+            }
+            final messageId = row['id']?.toString() ?? '';
+            final index = _messages.indexWhere(
+              (message) => message['id']?.toString() == messageId,
+            );
+            if (index >= 0 && mounted) {
+              setState(() {
+                _messages[index] = {..._messages[index], ...row};
+              });
+            }
+          },
+        )
         .subscribe();
   }
 
