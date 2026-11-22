@@ -62,8 +62,8 @@ class _ChatScreenState extends State<ChatScreen> {
         _conversationId = conversationId;
       });
 
-      await _loadMessages(conversationId);
       _subscribeToMessages(conversationId);
+      await _loadMessages(conversationId);
     } catch (e) {
       if (!mounted) return;
 
@@ -80,6 +80,35 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  Future<void> _markMessageRead(Message message) async {
+    if (message.senderId == _currentUserId || message.status == 'read') {
+      return;
+    }
+
+    try {
+      await _chatService.markDelivered(message.id);
+      await _chatService.markRead(message.id);
+
+      if (!mounted) return;
+      final index = _messages.indexWhere((item) => item.id == message.id);
+      if (index >= 0) {
+        setState(() {
+          _messages[index] = Message(
+            id: message.id,
+            conversationId: message.conversationId,
+            senderId: message.senderId,
+            content: message.content,
+            contentType: message.contentType,
+            status: 'read',
+            createdAt: message.createdAt,
+          );
+        });
+      }
+    } catch (e) {
+      debugPrint('CHAT READ STATUS ERROR: $e');
+    }
+  }
+
   Future<void> _loadMessages(String conversationId) async {
     try {
       final messages = await _chatService.getMessages(
@@ -93,6 +122,9 @@ class _ChatScreenState extends State<ChatScreen> {
         _loading = false;
       });
 
+      for (final message in messages) {
+        await _markMessageRead(message);
+      }
       _scrollToBottom();
     } catch (e) {
       if (!mounted) return;
