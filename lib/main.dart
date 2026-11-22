@@ -19502,21 +19502,24 @@ class _ChatListScreenState extends State<ChatListScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: colors.surface,
       appBar: AppBar(
         elevation: 0,
-        backgroundColor: const Color(0xFF075E54),
-        foregroundColor: Colors.white,
+        backgroundColor: colors.surface,
+        foregroundColor: colors.onSurface,
+        surfaceTintColor: Colors.transparent,
         title: const Text(
           'Messages',
           style: TextStyle(fontWeight: FontWeight.bold),
         ),
         actions: [
           IconButton(
-            tooltip: 'Refresh',
-            icon: const Icon(Icons.refresh),
-            onPressed: _loadMessagingData,
+            tooltip: 'Refresh messages',
+            icon: const Icon(Icons.refresh_rounded),
+            onPressed: _loading ? null : _loadMessagingData,
           ),
         ],
       ),
@@ -19528,19 +19531,19 @@ class _ChatListScreenState extends State<ChatListScreen> {
                   ? _buildEmptyMessages()
                   : ListView(
                       physics: const AlwaysScrollableScrollPhysics(),
-                      padding: const EdgeInsets.only(bottom: 20),
+                      padding: const EdgeInsets.fromLTRB(12, 16, 12, 24),
                       children: [
-                        const Padding(
-                          padding: EdgeInsets.fromLTRB(18, 20, 18, 10),
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(6, 4, 6, 12),
                           child: Text(
                             'Apartment members',
                             style: TextStyle(
                               fontSize: 18,
-                              fontWeight: FontWeight.bold,
+                              fontWeight: FontWeight.w800,
+                              color: colors.onSurface,
                             ),
                           ),
                         ),
-
                         ..._contacts.map((contact) {
                           final conversation = _conversations
                               .cast<Map<String, dynamic>?>()
@@ -19550,136 +19553,153 @@ class _ChatListScreenState extends State<ChatListScreen> {
                                     contact['id']?.toString(),
                                 orElse: () => null,
                               );
-
                           final latestMessage = conversation?['latest_message'];
-
                           final hasMessage = latestMessage != null;
-
                           final canChat = contact['can_chat'] == true;
-
                           final type =
                               contact['type']?.toString().toLowerCase() ??
                               'tenant';
-
                           final roleLabel = type == 'landlord'
                               ? 'Landlord'
                               : type == 'owner'
-                              ? 'Owner'
-                              : 'Tenant';
-
+                                  ? 'Owner'
+                                  : 'Tenant';
+                          final isUnread = hasMessage &&
+                              latestMessage['receiver_id']?.toString() ==
+                                  _currentUserId &&
+                              latestMessage['status']?.toString() != 'read';
                           final subtitle = hasMessage
-                              ? latestMessage['message']?.toString() ??
-                                    'Message'
+                              ? latestMessage['message']?.toString() ?? 'Message'
                               : canChat
-                              ? 'Tap to start chatting'
-                              : 'Messaging unavailable';
+                                  ? 'Tap to start chatting'
+                                  : 'Messaging unavailable';
 
-                          return Column(
-                            children: [
-                              ListTile(
-                                contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 18,
-                                  vertical: 7,
-                                ),
-                                leading: Opacity(
-                                  opacity: canChat ? 1.0 : 0.55,
-                                  child: _contactAvatar(contact, radius: 28),
-                                ),
-                                title: Row(
+                          return Card(
+                            margin: const EdgeInsets.only(bottom: 8),
+                            elevation: 0,
+                            color: colors.surfaceContainerLow,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16),
+                              side: BorderSide(
+                                color: colors.outlineVariant.withValues(alpha: 0.45),
+                              ),
+                            ),
+                            child: ListTile(
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 7,
+                              ),
+                              leading: Opacity(
+                                opacity: canChat ? 1 : 0.55,
+                                child: _contactAvatar(contact, radius: 27),
+                              ),
+                              title: Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      contact['name']?.toString() ?? 'Member',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontWeight: isUnread
+                                            ? FontWeight.w800
+                                            : FontWeight.w700,
+                                        fontSize: 15.5,
+                                        color: canChat
+                                            ? colors.onSurface
+                                            : colors.onSurfaceVariant,
+                                      ),
+                                    ),
+                                  ),
+                                  if (hasMessage)
+                                    Text(
+                                      _formatTime(latestMessage['created_at']),
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        color: colors.onSurfaceVariant,
+                                      ),
+                                    ),
+                                ],
+                              ),
+                              subtitle: Padding(
+                                padding: const EdgeInsets.only(top: 5),
+                                child: Row(
                                   children: [
                                     Expanded(
                                       child: Text(
-                                        contact['name']?.toString() ?? 'Member',
+                                        subtitle,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
                                         style: TextStyle(
-                                          fontWeight: FontWeight.w700,
-                                          fontSize: 16,
-                                          color: canChat
-                                              ? Colors.black87
-                                              : Colors.grey.shade600,
+                                          color: isUnread
+                                              ? colors.onSurface
+                                              : colors.onSurfaceVariant,
+                                          fontWeight: isUnread
+                                              ? FontWeight.w600
+                                              : FontWeight.normal,
                                         ),
                                       ),
                                     ),
-                                    if (hasMessage)
-                                      Text(
-                                        _formatTime(
-                                          latestMessage['created_at'],
-                                        ),
+                                    const SizedBox(width: 8),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 8,
+                                        vertical: 3,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: type == 'owner'
+                                            ? const Color(0xFF6A1B9A).withValues(alpha: 0.12)
+                                            : colors.primary.withValues(alpha: 0.10),
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      child: Text(
+                                        roleLabel,
                                         style: TextStyle(
-                                          fontSize: 11,
-                                          color: Colors.grey.shade600,
+                                          fontSize: 10.5,
+                                          fontWeight: FontWeight.w700,
+                                          color: type == 'owner'
+                                              ? const Color(0xFFB78AE0)
+                                              : colors.primary,
                                         ),
                                       ),
+                                    ),
                                   ],
                                 ),
-                                subtitle: Padding(
-                                  padding: const EdgeInsets.only(top: 5),
-                                  child: Row(
-                                    children: [
-                                      Expanded(
-                                        child: Text(
-                                          subtitle,
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: TextStyle(
-                                            color: canChat
-                                                ? (hasMessage
-                                                      ? Colors.grey.shade700
-                                                      : Colors.grey.shade500)
-                                                : Colors.grey.shade500,
-                                          ),
-                                        ),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 8,
-                                          vertical: 3,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color: type == 'owner'
-                                              ? const Color(0xFF6A1B9A)
-                                                    .withValues(alpha: 0.10)
-                                              : type == 'landlord'
-                                              ? const Color(0xFF075E54)
-                                                    .withValues(alpha: 0.10)
-                                              : const Color(0xFF128C7E)
-                                                    .withValues(alpha: 0.10),
-                                          borderRadius: BorderRadius.circular(
-                                            12,
-                                          ),
-                                        ),
-                                        child: Text(
-                                          roleLabel,
-                                          style: TextStyle(
-                                            fontSize: 11,
-                                            fontWeight: FontWeight.w600,
-                                            color: type == 'owner'
-                                                ? const Color(0xFF6A1B9A)
-                                                : type == 'landlord'
-                                                ? const Color(0xFF075E54)
-                                                : const Color(0xFF128C7E),
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                trailing: canChat
-                                    ? const Icon(
-                                        Icons.chevron_right,
-                                        color: Colors.grey,
-                                      )
-                                    : Icon(
-                                        Icons.lock_outline_rounded,
-                                        color: Colors.grey.shade400,
-                                        size: 20,
-                                      ),
-                                onTap: canChat
-                                    ? () => _openContact(contact)
-                                    : null,
                               ),
-                              const Divider(height: 1, indent: 82),
-                            ],
+                              trailing: _creatingChat
+                                  ? SizedBox(
+                                      width: 20,
+                                      height: 20,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: colors.primary,
+                                      ),
+                                    )
+                                  : Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        if (isUnread)
+                                          Container(
+                                            width: 9,
+                                            height: 9,
+                                            decoration: BoxDecoration(
+                                              color: colors.primary,
+                                              shape: BoxShape.circle,
+                                            ),
+                                          ),
+                                        const SizedBox(width: 7),
+                                        Icon(
+                                          canChat
+                                              ? Icons.chevron_right_rounded
+                                              : Icons.lock_outline_rounded,
+                                          color: colors.onSurfaceVariant,
+                                        ),
+                                      ],
+                                    ),
+                              onTap: canChat && !_creatingChat
+                                  ? () => _openContact(contact)
+                                  : null,
+                            ),
                           );
                         }),
                       ],
@@ -19689,35 +19709,55 @@ class _ChatListScreenState extends State<ChatListScreen> {
   }
 
   Widget _buildEmptyMessages() {
+    final colors = Theme.of(context).colorScheme;
+
     return RefreshIndicator(
       onRefresh: _loadMessagingData,
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.all(28),
         children: [
-          const SizedBox(height: 80),
-          CircleAvatar(
-            radius: 45,
-            backgroundColor: const Color(0xFF075E54).withValues(alpha: 0.10),
-            child: const Icon(
-              Icons.people_outline,
-              size: 48,
-              color: Color(0xFF075E54),
+          const SizedBox(height: 100),
+          Center(
+            child: CircleAvatar(
+              radius: 46,
+              backgroundColor: colors.primaryContainer,
+              child: Icon(
+                Icons.forum_outlined,
+                size: 46,
+                color: colors.onPrimaryContainer,
+              ),
             ),
           ),
           const SizedBox(height: 22),
-          const Center(
+          Center(
             child: Text(
-              'No apartment members yet',
-              style: TextStyle(fontSize: 21, fontWeight: FontWeight.bold),
+              'No conversations yet',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w800,
+                color: colors.onSurface,
+              ),
             ),
           ),
           const SizedBox(height: 8),
           Center(
             child: Text(
-              'Your landlord and other tenants will appear here when they are available.',
+              'Your landlord and apartment members will appear here when they are available to message.',
               textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.grey.shade600, fontSize: 14),
+              style: TextStyle(
+                color: colors.onSurfaceVariant,
+                fontSize: 14,
+                height: 1.5,
+              ),
+            ),
+          ),
+          const SizedBox(height: 18),
+          Center(
+            child: TextButton.icon(
+              onPressed: _loading ? null : _loadMessagingData,
+              icon: const Icon(Icons.refresh_rounded),
+              label: const Text('Refresh'),
             ),
           ),
         ],
