@@ -384,24 +384,23 @@ class _ChatListScreenState extends State<ChatListScreen> {
         children: [
           const SizedBox(height: 120),
 
-          Container(
-            width: 105,
-            height: 105,
-            margin: const EdgeInsets.symmetric(
-              horizontal: 135,
-            ),
-            decoration: BoxDecoration(
-              color: isDark
-                  ? const Color(0xFF173F3A)
-                  : const Color(0xFFE8F5F2),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(
-              Icons.forum_outlined,
-              size: 48,
-              color: isDark
-                  ? const Color(0xFF7FD8CB)
-                  : const Color(0xFF075E54),
+          Center(
+            child: Container(
+              width: 105,
+              height: 105,
+              decoration: BoxDecoration(
+                color: isDark
+                    ? const Color(0xFF173F3A)
+                    : const Color(0xFFE8F5F2),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                Icons.forum_outlined,
+                size: 48,
+                color: isDark
+                    ? const Color(0xFF7FD8CB)
+                    : const Color(0xFF075E54),
+              ),
             ),
           ),
 
