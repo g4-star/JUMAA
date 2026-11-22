@@ -304,6 +304,9 @@ class _ChatScreenState extends State<ChatScreen> {
                 controller: _messageController,
                 textInputAction: TextInputAction.send,
                 onSubmitted: (_) => _sendMessage(),
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurface,
+                ),
                 decoration: InputDecoration(
                   hintText: 'Type a message...',
                   border: OutlineInputBorder(
@@ -314,9 +317,6 @@ class _ChatScreenState extends State<ChatScreen> {
                   fillColor: Theme.of(context).colorScheme.surfaceContainerHighest,
                   hintStyle: TextStyle(
                     color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
-                  style: TextStyle(
-                    color: Theme.of(context).colorScheme.onSurface,
                   ),
                   contentPadding: const EdgeInsets.symmetric(
                     horizontal: 18,
