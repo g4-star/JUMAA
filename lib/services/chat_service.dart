@@ -202,7 +202,8 @@ class ChatService {
     await supabase
         .from('messages')
         .update({'status': 'read', 'read_at': DateTime.now().toIso8601String()})
-        .eq('id', messageId);
+        .eq('id', messageId)
+        .eq('receiver_id', currentUserId ?? '');
   }
 
   // ============================================================
