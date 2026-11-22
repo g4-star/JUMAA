@@ -62,8 +62,8 @@ class _ChatScreenState extends State<ChatScreen> {
         _conversationId = conversationId;
       });
 
-      await _loadMessages(conversationId);
       _subscribeToMessages(conversationId);
+      await _loadMessages(conversationId);
     } catch (e) {
       if (!mounted) return;
 
@@ -80,6 +80,35 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  Future<void> _markMessageRead(Message message) async {
+    if (message.senderId == _currentUserId || message.status == 'read') {
+      return;
+    }
+
+    try {
+      await _chatService.markDelivered(message.id);
+      await _chatService.markRead(message.id);
+
+      if (!mounted) return;
+      final index = _messages.indexWhere((item) => item.id == message.id);
+      if (index >= 0) {
+        setState(() {
+          _messages[index] = Message(
+            id: message.id,
+            conversationId: message.conversationId,
+            senderId: message.senderId,
+            content: message.content,
+            contentType: message.contentType,
+            status: 'read',
+            createdAt: message.createdAt,
+          );
+        });
+      }
+    } catch (e) {
+      debugPrint('CHAT READ STATUS ERROR: $e');
+    }
+  }
+
   Future<void> _loadMessages(String conversationId) async {
     try {
       final messages = await _chatService.getMessages(
@@ -93,6 +122,9 @@ class _ChatScreenState extends State<ChatScreen> {
         _loading = false;
       });
 
+      for (final message in messages) {
+        await _markMessageRead(message);
+      }
       _scrollToBottom();
     } catch (e) {
       if (!mounted) return;
@@ -116,20 +148,22 @@ class _ChatScreenState extends State<ChatScreen> {
     ) {
       if (!mounted) return;
 
-      final alreadyExists = _messages.any(
+      final existingIndex = _messages.indexWhere(
         (existing) => existing.id == message.id,
       );
 
-      if (alreadyExists) return;
-
       setState(() {
-        _messages.add(message);
+        if (existingIndex >= 0) {
+          _messages[existingIndex] = message;
+        } else {
+          _messages.add(message);
+        }
       });
 
       _scrollToBottom();
 
       if (message.senderId != _currentUserId) {
-        _chatService.markDelivered(message.id);
+        _markMessageRead(message);
       }
     });
   }
@@ -147,18 +181,22 @@ class _ChatScreenState extends State<ChatScreen> {
       return;
     }
 
-    _messageController.clear();
-
     setState(() {
       _sending = true;
     });
 
     try {
-      await _chatService.sendMessage(
+      final sentMessage = await _chatService.sendMessage(
         conversationId: conversationId,
         receiverId: widget.landlordId,
         message: text,
       );
+
+      _messageController.clear();
+      if (mounted && !_messages.any((item) => item.id == sentMessage.id)) {
+        setState(() => _messages.add(sentMessage));
+        _scrollToBottom();
+      }
     } catch (e) {
       if (!mounted) return;
 
@@ -201,10 +239,14 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
+      backgroundColor: colors.surface,
       appBar: AppBar(
+        backgroundColor: colors.surface,
+        foregroundColor: colors.onSurface,
         title: Text(
           widget.otherUserName,
           style: const TextStyle(fontWeight: FontWeight.bold),
@@ -231,7 +273,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
                       final isMe = message.senderId == _currentUserId;
 
-                      return _messageBubble(message, isMe, isDark);
+                      return _messageBubble(message, isMe);
                     },
                   ),
           ),
@@ -257,12 +299,14 @@ class _ChatScreenState extends State<ChatScreen> {
       child: SafeArea(
         child: Row(
           children: [
-            IconButton(icon: const Icon(Icons.attach_file), onPressed: () {}),
             Expanded(
               child: TextField(
                 controller: _messageController,
                 textInputAction: TextInputAction.send,
                 onSubmitted: (_) => _sendMessage(),
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurface,
+                ),
                 decoration: InputDecoration(
                   hintText: 'Type a message...',
                   border: OutlineInputBorder(
@@ -270,9 +314,10 @@ class _ChatScreenState extends State<ChatScreen> {
                     borderSide: BorderSide.none,
                   ),
                   filled: true,
-                  fillColor: isDark
-                      ? Colors.grey.shade800
-                      : Colors.grey.shade100,
+                  fillColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+                  hintStyle: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
                   contentPadding: const EdgeInsets.symmetric(
                     horizontal: 18,
                     vertical: 12,
@@ -283,7 +328,9 @@ class _ChatScreenState extends State<ChatScreen> {
             const SizedBox(width: 8),
             CircleAvatar(
               radius: 24,
+              backgroundColor: Theme.of(context).colorScheme.primary,
               child: IconButton(
+                color: Theme.of(context).colorScheme.onPrimary,
                 icon: _sending
                     ? const SizedBox(
                         width: 18,
@@ -300,7 +347,9 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  Widget _messageBubble(Message message, bool isMe, bool isDark) {
+  Widget _messageBubble(Message message, bool isMe) {
+    final colors = Theme.of(context).colorScheme;
+
     return Align(
       alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
@@ -308,11 +357,7 @@ class _ChatScreenState extends State<ChatScreen> {
         margin: const EdgeInsets.only(bottom: 10),
         padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 11),
         decoration: BoxDecoration(
-          color: isMe
-              ? Theme.of(context).colorScheme.primary
-              : isDark
-              ? Colors.grey.shade800
-              : Colors.grey.shade100,
+          color: isMe ? colors.primary : colors.surfaceContainerHighest,
           borderRadius: BorderRadius.only(
             topLeft: const Radius.circular(18),
             topRight: const Radius.circular(18),
@@ -321,29 +366,43 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
         ),
         child: Column(
-          crossAxisAlignment: isMe
-              ? CrossAxisAlignment.end
-              : CrossAxisAlignment.start,
+          crossAxisAlignment:
+              isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
           children: [
             Text(
               message.content,
               style: TextStyle(
-                color: isMe
-                    ? Colors.white
-                    : isDark
-                    ? Colors.white
-                    : Colors.black87,
+                color: isMe ? colors.onPrimary : colors.onSurface,
                 fontSize: 15,
                 height: 1.4,
               ),
             ),
             const SizedBox(height: 4),
-            Text(
-              _formatTime(message.createdAt),
-              style: TextStyle(
-                color: isMe ? Colors.white70 : Colors.grey.shade500,
-                fontSize: 10,
-              ),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  _formatTime(message.createdAt),
+                  style: TextStyle(
+                    color: isMe
+                        ? colors.onPrimary.withValues(alpha: 0.72)
+                        : colors.onSurfaceVariant,
+                    fontSize: 10,
+                  ),
+                ),
+                if (isMe) ...[
+                  const SizedBox(width: 4),
+                  Icon(
+                    message.status == 'read'
+                        ? Icons.done_all_rounded
+                        : Icons.done_rounded,
+                    size: 14,
+                    color: message.status == 'read'
+                        ? const Color(0xFF53BDEB)
+                        : colors.onPrimary.withValues(alpha: 0.72),
+                  ),
+                ],
+              ],
             ),
           ],
         ),

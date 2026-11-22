@@ -8,6 +8,7 @@ class ChatService {
   final SupabaseClient supabase = Supabase.instance.client;
 
   RealtimeChannel? _channel;
+  StreamController<Message>? _messageController;
 
   String? get currentUserId {
     return supabase.auth.currentUser?.id;
@@ -67,6 +68,7 @@ class ChatService {
         senderId: row['sender_id'].toString(),
         content: row['message'].toString(),
         contentType: 'text',
+        status: row['status']?.toString() ?? 'sent',
         createdAt: DateTime.parse(row['created_at'].toString()),
       );
     }).toList();
@@ -76,7 +78,7 @@ class ChatService {
   // SEND MESSAGE
   // ============================================================
 
-  Future<void> sendMessage({
+  Future<Message> sendMessage({
     required String conversationId,
     required String receiverId,
     required String message,
@@ -90,16 +92,30 @@ class ChatService {
     final text = message.trim();
 
     if (text.isEmpty) {
-      return;
+      throw ArgumentError('Message cannot be empty.');
     }
 
-    await supabase.from('messages').insert({
-      'sender_id': userId,
-      'receiver_id': receiverId,
-      'conversation_id': conversationId,
-      'message': text,
-      'status': 'sent',
-    });
+    final row = await supabase
+        .from('messages')
+        .insert({
+          'sender_id': userId,
+          'receiver_id': receiverId,
+          'conversation_id': conversationId,
+          'message': text,
+          'status': 'sent',
+        })
+        .select()
+        .single();
+
+    return Message(
+      id: row['id'].toString(),
+      conversationId: row['conversation_id'].toString(),
+      senderId: row['sender_id'].toString(),
+      content: row['message'].toString(),
+      contentType: 'text',
+      status: row['status']?.toString() ?? 'sent',
+      createdAt: DateTime.parse(row['created_at'].toString()),
+    );
   }
 
   // ============================================================
@@ -107,7 +123,8 @@ class ChatService {
   // ============================================================
 
   Stream<Message> subscribeToMessages({required String conversationId}) {
-    final controller = StreamController<Message>();
+    final controller = StreamController<Message>.broadcast();
+    _messageController = controller;
 
     _channel = supabase
         .channel('conversation_$conversationId')
@@ -129,6 +146,29 @@ class ChatService {
                 senderId: row['sender_id'].toString(),
                 content: row['message'].toString(),
                 contentType: 'text',
+                status: row['status']?.toString() ?? 'sent',
+                createdAt: DateTime.parse(row['created_at'].toString()),
+              ),
+            );
+          },
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.update,
+          schema: 'public',
+          table: 'messages',
+          callback: (payload) {
+            final row = payload.newRecord;
+            if (row['conversation_id']?.toString() != conversationId) {
+              return;
+            }
+            controller.add(
+              Message(
+                id: row['id'].toString(),
+                conversationId: row['conversation_id'].toString(),
+                senderId: row['sender_id'].toString(),
+                content: row['message'].toString(),
+                contentType: 'text',
+                status: row['status']?.toString() ?? 'sent',
                 createdAt: DateTime.parse(row['created_at'].toString()),
               ),
             );
@@ -150,7 +190,8 @@ class ChatService {
           'status': 'delivered',
           'delivered_at': DateTime.now().toIso8601String(),
         })
-        .eq('id', messageId);
+        .eq('id', messageId)
+        .eq('receiver_id', currentUserId ?? '');
   }
 
   // ============================================================
@@ -161,7 +202,8 @@ class ChatService {
     await supabase
         .from('messages')
         .update({'status': 'read', 'read_at': DateTime.now().toIso8601String()})
-        .eq('id', messageId);
+        .eq('id', messageId)
+        .eq('receiver_id', currentUserId ?? '');
   }
 
   // ============================================================
@@ -172,6 +214,12 @@ class ChatService {
     if (_channel != null) {
       await supabase.removeChannel(_channel!);
       _channel = null;
+    }
+
+    final controller = _messageController;
+    _messageController = null;
+    if (controller != null && !controller.isClosed) {
+      await controller.close();
     }
   }
 }

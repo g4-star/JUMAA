@@ -25,6 +25,7 @@ class _LandlordMessagesPageState extends State<LandlordMessagesPage> {
 
   String _search = '';
   bool _loading = true;
+  bool _openingChat = false;
   String? _error;
 
   String get _currentUserId => _supabase.auth.currentUser?.id ?? '';
@@ -175,21 +176,23 @@ class _LandlordMessagesPageState extends State<LandlordMessagesPage> {
       // ------------------------------------------------------------
       // HELPER: GET LATEST MESSAGE
       // ------------------------------------------------------------
-      Future<String> latestMessage(String? conversationId) async {
+      Future<Map<String, dynamic>?> latestMessage(
+        String? conversationId,
+      ) async {
         if (conversationId == null || conversationId.isEmpty) {
-          return '';
+          return null;
         }
 
         try {
           final rows = await _supabase
               .from('messages')
-              .select('message, created_at, sender_id')
+              .select('message, created_at, sender_id, receiver_id, status')
               .eq('conversation_id', conversationId)
               .order('created_at', ascending: false)
               .limit(1);
 
           if (rows.isNotEmpty) {
-            return rows.first['message']?.toString() ?? '';
+            return Map<String, dynamic>.from(rows.first);
           }
         } catch (e) {
           debugPrint(
@@ -198,7 +201,7 @@ class _LandlordMessagesPageState extends State<LandlordMessagesPage> {
           );
         }
 
-        return '';
+        return null;
       }
 
       final contacts = <ChatContact>[];
@@ -257,12 +260,13 @@ class _LandlordMessagesPageState extends State<LandlordMessagesPage> {
             id: ownerId,
             name: ownerName,
             type: 'Owner',
-            unread: false,
+            unread: ownerLastMessage?['receiver_id']?.toString() == _currentUserId &&
+                ownerLastMessage?['status']?.toString() != 'read',
             conversationId: ownerConversationId,
             unitId: '',
             email: ownerEmail,
             phone: ownerPhone,
-            lastMessage: ownerLastMessage,
+            lastMessage: ownerLastMessage?['message']?.toString() ?? '',
           ),
         );
 
@@ -313,12 +317,13 @@ class _LandlordMessagesPageState extends State<LandlordMessagesPage> {
                 : tenantId,
             name: tenantName,
             type: 'Tenant',
-            unread: false,
+            unread: lastMessage?['receiver_id']?.toString() == _currentUserId &&
+                lastMessage?['status']?.toString() != 'read',
             conversationId: conversationId,
             unitId: unitId,
             email: tenant['email']?.toString() ?? '',
             phone: tenant['phone']?.toString() ?? '',
-            lastMessage: lastMessage,
+            lastMessage: lastMessage?['message']?.toString() ?? '',
           ),
         );
 
@@ -372,6 +377,8 @@ class _LandlordMessagesPageState extends State<LandlordMessagesPage> {
   }
 
   Future<void> _openChat(ChatContact contact) async {
+    if (_openingChat) return;
+
     if (contact.id.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -379,25 +386,37 @@ class _LandlordMessagesPageState extends State<LandlordMessagesPage> {
           behavior: SnackBarBehavior.floating,
         ),
       );
-
       return;
     }
 
-    final result = await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => LandlordChatPage(
-          landlord: widget.landlord,
-          contact: contact,
-        ),
-      ),
-    );
+    setState(() => _openingChat = true);
 
-    /*
-     * Refresh the conversation preview when returning from chat.
-     */
-    if (result == true && mounted) {
-      await _loadContacts();
+    try {
+      final result = await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => LandlordChatPage(
+            landlord: widget.landlord,
+            contact: contact,
+          ),
+        ),
+      );
+
+      if (result == true && mounted) {
+        await _loadContacts();
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Could not open this conversation: $e'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _openingChat = false);
+      }
     }
   }
 
@@ -568,7 +587,7 @@ class _LandlordMessagesPageState extends State<LandlordMessagesPage> {
                 ),
               )
             : const Icon(Icons.chevron_right),
-        onTap: () => _openChat(contact),
+        onTap: _openingChat ? null : () => _openChat(contact),
       ),
     );
   }
@@ -663,6 +682,7 @@ class _LandlordChatPageState extends State<LandlordChatPage> {
   List<ChatMessage> _messages = [];
 
   String? _conversationId;
+  RealtimeChannel? _messageChannel;
 
   bool _loading = true;
   bool _sending = false;
@@ -688,9 +708,121 @@ class _LandlordChatPageState extends State<LandlordChatPage> {
 
   @override
   void dispose() {
+    final channel = _messageChannel;
+    _messageChannel = null;
+    if (channel != null) {
+      _supabase.removeChannel(channel);
+    }
     _messageController.dispose();
     _scrollController.dispose();
     super.dispose();
+  }
+
+  void _subscribeToConversation(String conversationId) {
+    if (_messageChannel != null) return;
+
+    _messageChannel = _supabase
+        .channel('landlord_chat_$conversationId')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.insert,
+          schema: 'public',
+          table: 'messages',
+          callback: (payload) {
+            final row = payload.newRecord;
+            if (row['conversation_id']?.toString() != conversationId) return;
+
+            final message = ChatMessage(
+              id: row['id']?.toString() ?? '',
+              senderId: row['sender_id']?.toString() ?? '',
+              receiverId: row['receiver_id']?.toString() ?? '',
+              conversationId: row['conversation_id']?.toString() ?? '',
+              message: row['message']?.toString() ?? '',
+              createdAt: DateTime.tryParse(row['created_at']?.toString() ?? '') ??
+                  DateTime.now(),
+              status: row['status']?.toString() ?? 'sent',
+            );
+
+            if (!mounted || message.id.isEmpty) return;
+            if (!_messages.any((item) => item.id == message.id)) {
+              setState(() => _messages.add(message));
+              _scrollToBottom();
+            }
+
+            if (message.receiverId == _currentUserId &&
+                message.status != 'read') {
+              _markMessageRead(message.id);
+            }
+          },
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.update,
+          schema: 'public',
+          table: 'messages',
+          callback: (payload) {
+            final row = payload.newRecord;
+            if (row['conversation_id']?.toString() != conversationId) return;
+
+            final id = row['id']?.toString() ?? '';
+            final index = _messages.indexWhere((item) => item.id == id);
+            if (!mounted || index < 0) return;
+
+            setState(() {
+              final old = _messages[index];
+              _messages[index] = ChatMessage(
+                id: old.id,
+                senderId: old.senderId,
+                receiverId: old.receiverId,
+                conversationId: old.conversationId,
+                message: old.message,
+                createdAt: old.createdAt,
+                status: row['status']?.toString() ?? old.status,
+              );
+            });
+          },
+        )
+        .subscribe();
+  }
+
+  Future<void> _markMessageRead(String messageId) async {
+    try {
+      await _supabase.from('messages').update({
+        'status': 'read',
+        'delivered_at': DateTime.now().toUtc().toIso8601String(),
+        'read_at': DateTime.now().toUtc().toIso8601String(),
+      }).eq('id', messageId).eq('receiver_id', _currentUserId);
+
+      if (!mounted) return;
+      final index = _messages.indexWhere((item) => item.id == messageId);
+      if (index < 0) return;
+
+      setState(() {
+        final old = _messages[index];
+        _messages[index] = ChatMessage(
+          id: old.id,
+          senderId: old.senderId,
+          receiverId: old.receiverId,
+          conversationId: old.conversationId,
+          message: old.message,
+          createdAt: old.createdAt,
+          status: 'read',
+        );
+      });
+    } catch (e) {
+      debugPrint('LANDLORD CHAT READ STATUS ERROR: $e');
+    }
+  }
+
+  Future<void> _markLoadedMessagesRead() async {
+    final unread = _messages
+        .where((message) =>
+            message.receiverId == _currentUserId && message.status != 'read')
+        .map((message) => message.id)
+        .where((id) => id.isNotEmpty)
+        .toList();
+
+    for (final id in unread) {
+      await _markMessageRead(id);
+    }
   }
 
   Future<void> _loadMessages() async {
@@ -760,6 +892,9 @@ class _LandlordChatPageState extends State<LandlordChatPage> {
         _loading = false;
       });
 
+      _subscribeToConversation(_conversationId!);
+      await _markLoadedMessagesRead();
+
       debugPrint(
         'LANDLORD CHAT: loaded ${loadedMessages.length} messages '
         'for conversation=$_conversationId',
@@ -825,6 +960,7 @@ class _LandlordChatPageState extends State<LandlordChatPage> {
     }
 
     _conversationId = conversationId;
+    _subscribeToConversation(conversationId);
 
     debugPrint(
       'LANDLORD CHAT: conversation ready=$_conversationId',
@@ -1150,15 +1286,32 @@ class _LandlordChatPageState extends State<LandlordChatPage> {
                               .onSurface,
                     ),
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    _formatTime(message.createdAt),
-                    style: TextStyle(
-                      fontSize: 10,
-                      color: isMine
-                          ? Colors.white70
-                          : Colors.grey.shade600,
-                    ),
+                  const SizedBox(height: 5),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        _formatTime(message.createdAt),
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: isMine
+                              ? Theme.of(context).colorScheme.onPrimary.withValues(alpha: 0.72)
+                              : Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                      if (isMine) ...[
+                        const SizedBox(width: 4),
+                        Icon(
+                          message.status == 'read'
+                              ? Icons.done_all_rounded
+                              : Icons.done_rounded,
+                          size: 14,
+                          color: message.status == 'read'
+                              ? const Color(0xFF53BDEB)
+                              : Theme.of(context).colorScheme.onPrimary.withValues(alpha: 0.72),
+                        ),
+                      ],
+                    ],
                   ),
                 ],
               ),
