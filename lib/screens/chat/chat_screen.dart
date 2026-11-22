@@ -209,10 +209,13 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final colors = Theme.of(context).colorScheme;
 
     return Scaffold(
+      backgroundColor: colors.surface,
       appBar: AppBar(
+        backgroundColor: colors.surface,
+        foregroundColor: colors.onSurface,
         title: Text(
           widget.otherUserName,
           style: const TextStyle(fontWeight: FontWeight.bold),
@@ -239,7 +242,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
                       final isMe = message.senderId == _currentUserId;
 
-                      return _messageBubble(message, isMe, isDark);
+                      return _messageBubble(message, isMe);
                     },
                   ),
           ),
@@ -313,7 +316,9 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  Widget _messageBubble(Message message, bool isMe, bool isDark) {
+  Widget _messageBubble(Message message, bool isMe) {
+    final colors = Theme.of(context).colorScheme;
+
     return Align(
       alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
@@ -321,9 +326,7 @@ class _ChatScreenState extends State<ChatScreen> {
         margin: const EdgeInsets.only(bottom: 10),
         padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 11),
         decoration: BoxDecoration(
-          color: isMe
-              ? Theme.of(context).colorScheme.primary
-              : Theme.of(context).colorScheme.surfaceContainerHighest,
+          color: isMe ? colors.primary : colors.surfaceContainerHighest,
           borderRadius: BorderRadius.only(
             topLeft: const Radius.circular(18),
             topRight: const Radius.circular(18),
@@ -332,16 +335,13 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
         ),
         child: Column(
-          crossAxisAlignment: isMe
-              ? CrossAxisAlignment.end
-              : CrossAxisAlignment.start,
+          crossAxisAlignment:
+              isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
           children: [
             Text(
               message.content,
               style: TextStyle(
-                color: isMe
-                    ? Theme.of(context).colorScheme.onPrimary
-                    : Theme.of(context).colorScheme.onSurface,
+                color: isMe ? colors.onPrimary : colors.onSurface,
                 fontSize: 15,
                 height: 1.4,
               ),
@@ -352,20 +352,23 @@ class _ChatScreenState extends State<ChatScreen> {
               children: [
                 Text(
                   _formatTime(message.createdAt),
-              style: TextStyle(
-                color: isMe
-                    ? Theme.of(context).colorScheme.onPrimary.withValues(alpha: 0.72)
-                    : Theme.of(context).colorScheme.onSurfaceVariant,
-                  fontSize: 10,
+                  style: TextStyle(
+                    color: isMe
+                        ? colors.onPrimary.withValues(alpha: 0.72)
+                        : colors.onSurfaceVariant,
+                    fontSize: 10,
+                  ),
                 ),
                 if (isMe) ...[
                   const SizedBox(width: 4),
                   Icon(
-                    message.status == 'read' ? Icons.done_all_rounded : Icons.done_rounded,
+                    message.status == 'read'
+                        ? Icons.done_all_rounded
+                        : Icons.done_rounded,
                     size: 14,
                     color: message.status == 'read'
                         ? const Color(0xFF53BDEB)
-                        : Theme.of(context).colorScheme.onPrimary.withValues(alpha: 0.72),
+                        : colors.onPrimary.withValues(alpha: 0.72),
                   ),
                 ],
               ],
