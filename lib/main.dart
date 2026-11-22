@@ -19783,7 +19783,7 @@ class _TenantChatConversationScreenState
 
   void _subscribeToMessages() {
     _messageChannel = OpenNestStore.supabase
-        .channel('tenant_chat_\${widget.conversationId}')
+        .channel('tenant_chat_${widget.conversationId}')
         .onPostgresChanges(
           event: PostgresChangeEvent.insert,
           schema: 'public',
