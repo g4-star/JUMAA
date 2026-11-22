@@ -152,6 +152,28 @@ class ChatService {
             );
           },
         )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.update,
+          schema: 'public',
+          table: 'messages',
+          callback: (payload) {
+            final row = payload.newRecord;
+            if (row['conversation_id']?.toString() != conversationId) {
+              return;
+            }
+            controller.add(
+              Message(
+                id: row['id'].toString(),
+                conversationId: row['conversation_id'].toString(),
+                senderId: row['sender_id'].toString(),
+                content: row['message'].toString(),
+                contentType: 'text',
+                status: row['status']?.toString() ?? 'sent',
+                createdAt: DateTime.parse(row['created_at'].toString()),
+              ),
+            );
+          },
+        )
         .subscribe();
 
     return controller.stream;
