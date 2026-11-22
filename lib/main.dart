@@ -16571,8 +16571,7 @@ class _PublicUserPageState extends State<PublicUserPage> {
                             width: 44,
                             height: 44,
                             decoration: BoxDecoration(
-                              color: const Color(0xFF0B3D2E)
-                                  .withValues(alpha: 0.10),
+                              color: Theme.of(context).colorScheme.primaryContainer,
                               borderRadius: BorderRadius.circular(14),
                             ),
                             child: Icon(
@@ -16884,7 +16883,7 @@ class _PublicUserPageState extends State<PublicUserPage> {
                                 });
                               },
                               style: FilledButton.styleFrom(
-                                backgroundColor: const Color(0xFF0B3D2E),
+                                backgroundColor: Theme.of(context).colorScheme.primary,
                                 foregroundColor: Colors.white,
                                 padding: const EdgeInsets.symmetric(
                                   vertical: 16,
@@ -17338,7 +17337,7 @@ class _PublicUserPageState extends State<PublicUserPage> {
                               icon: const Icon(Icons.refresh),
                               label: const Text('Retry'),
                               style: ElevatedButton.styleFrom(
-                                backgroundColor: const Color(0xFF0B3D2E),
+                                backgroundColor: Theme.of(context).colorScheme.primary,
                                 foregroundColor: Colors.white,
                               ),
                             ),
@@ -17622,11 +17621,13 @@ class _PublicUserPageState extends State<PublicUserPage> {
                   runSpacing: 8,
                   children: [
                     _propertyInfoChip(
+                      context,
                       Icons.home_work_outlined,
                       '${listing.vacantCount} vacant '
                       '${listing.vacantCount == 1 ? 'unit' : 'units'}',
                     ),
                     _propertyInfoChip(
+                      context,
                       Icons.payments_outlined,
                       'From KSh ${listing.lowestRent}',
                     ),
@@ -17761,21 +17762,25 @@ class _PublicUserPageState extends State<PublicUserPage> {
     );
   }
 
-  Widget _propertyInfoChip(IconData icon, String text) {
+  Widget _propertyInfoChip(BuildContext context, IconData icon, String text) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
       decoration: BoxDecoration(
-        color: const Color(0xFFF2F7F4),
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(10),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 16, color: const Color(0xFF0B3D2E)),
+          Icon(icon, size: 16, color: Theme.of(context).colorScheme.primary),
           const SizedBox(width: 5),
           Text(
             text,
-            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12),
+            style: TextStyle(
+              fontWeight: FontWeight.w600,
+              fontSize: 12,
+              color: Theme.of(context).colorScheme.onSurface,
+            ),
           ),
         ],
       ),
