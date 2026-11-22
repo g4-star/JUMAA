@@ -433,7 +433,7 @@ class _ApartmentAppState extends State<ApartmentApp> {
                             children: [
                               Icon(
                                 Icons.wifi_off_rounded,
-                                color: Colors.white,
+                                color: Theme.of(context).colorScheme.surface,
                                 size: 18,
                               ),
                               SizedBox(width: 8),
@@ -8914,7 +8914,7 @@ class _TenantDashboardPageState extends State<TenantDashboardPage> {
                           width: 54,
                           height: 54,
                           decoration: BoxDecoration(
-                            color: const Color(0xFFE8F3EE),
+                            color: Theme.of(context).colorScheme.surfaceContainerHighest,
                             borderRadius: BorderRadius.circular(16),
                           ),
                           child: const Icon(
@@ -9063,7 +9063,7 @@ class _TenantDashboardPageState extends State<TenantDashboardPage> {
                         width: 48,
                         height: 48,
                         decoration: BoxDecoration(
-                          color: const Color(0xFFE8F3EE),
+                          color: Theme.of(context).colorScheme.surfaceContainerHighest,
                           borderRadius: BorderRadius.circular(14),
                         ),
                         child: const Icon(
@@ -16102,7 +16102,7 @@ class _PublicPropertyRoutePageState extends State<PublicPropertyRoutePage> {
                             const SizedBox(height: 4),
                             Text(
                               property.address,
-                              style: const TextStyle(color: Colors.black54),
+                              style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
                             ),
                           ],
                         ],
@@ -17086,12 +17086,12 @@ class _PublicUserPageState extends State<PublicUserPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
+            Text(
               'Find your next home',
-              style: TextStyle(
+              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                 fontSize: 28,
                 fontWeight: FontWeight.w800,
-                color: Color(0xFF0B3D2E),
+                color: Theme.of(context).colorScheme.onSurface,
               ),
             ),
 
