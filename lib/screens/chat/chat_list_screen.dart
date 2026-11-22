@@ -217,48 +217,21 @@ class _ChatListScreenState extends State<ChatListScreen> {
     Map<String, dynamic> landlord,
     bool isDark,
   ) {
-    final name =
-        landlord['name']?.toString() ?? 'Landlord';
+    final name = landlord['name']?.toString() ?? 'Landlord';
 
-    return Stack(
-      clipBehavior: Clip.none,
-      children: [
-        CircleAvatar(
-          radius: 29,
-          backgroundColor: isDark
-              ? const Color(0xFF176B5F)
-              : const Color(0xFFE1F2EE),
-          child: Text(
-            _initials(name),
-            style: TextStyle(
-              color: isDark
-                  ? Colors.white
-                  : const Color(0xFF075E54),
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
+    return CircleAvatar(
+      radius: 29,
+      backgroundColor: isDark
+          ? const Color(0xFF176B5F)
+          : const Color(0xFFE1F2EE),
+      child: Text(
+        _initials(name),
+        style: TextStyle(
+          color: isDark ? Colors.white : const Color(0xFF075E54),
+          fontSize: 18,
+          fontWeight: FontWeight.bold,
         ),
-
-        Positioned(
-          right: -1,
-          bottom: 1,
-          child: Container(
-            width: 14,
-            height: 14,
-            decoration: BoxDecoration(
-              color: const Color(0xFF20C55A),
-              shape: BoxShape.circle,
-              border: Border.all(
-                color: isDark
-                    ? Theme.of(context).scaffoldBackgroundColor
-                    : Colors.white,
-                width: 2,
-              ),
-            ),
-          ),
-        ),
-      ],
+      ),
     );
   }
 
