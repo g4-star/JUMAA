@@ -68,6 +68,7 @@ class ChatService {
         senderId: row['sender_id'].toString(),
         content: row['message'].toString(),
         contentType: 'text',
+        status: row['status']?.toString() ?? 'sent',
         createdAt: DateTime.parse(row['created_at'].toString()),
       );
     }).toList();
@@ -77,7 +78,7 @@ class ChatService {
   // SEND MESSAGE
   // ============================================================
 
-  Future<void> sendMessage({
+  Future<Message> sendMessage({
     required String conversationId,
     required String receiverId,
     required String message,
@@ -94,13 +95,27 @@ class ChatService {
       return;
     }
 
-    await supabase.from('messages').insert({
-      'sender_id': userId,
-      'receiver_id': receiverId,
-      'conversation_id': conversationId,
-      'message': text,
-      'status': 'sent',
-    });
+    final row = await supabase
+        .from('messages')
+        .insert({
+          'sender_id': userId,
+          'receiver_id': receiverId,
+          'conversation_id': conversationId,
+          'message': text,
+          'status': 'sent',
+        })
+        .select()
+        .single();
+
+    return Message(
+      id: row['id'].toString(),
+      conversationId: row['conversation_id'].toString(),
+      senderId: row['sender_id'].toString(),
+      content: row['message'].toString(),
+      contentType: 'text',
+      status: row['status']?.toString() ?? 'sent',
+      createdAt: DateTime.parse(row['created_at'].toString()),
+    );
   }
 
   // ============================================================
@@ -131,6 +146,7 @@ class ChatService {
                 senderId: row['sender_id'].toString(),
                 content: row['message'].toString(),
                 contentType: 'text',
+                status: row['status']?.toString() ?? 'sent',
                 createdAt: DateTime.parse(row['created_at'].toString()),
               ),
             );
