@@ -25,6 +25,7 @@ class _LandlordMessagesPageState extends State<LandlordMessagesPage> {
 
   String _search = '';
   bool _loading = true;
+  bool _openingChat = false;
   String? _error;
 
   String get _currentUserId => _supabase.auth.currentUser?.id ?? '';
@@ -376,6 +377,8 @@ class _LandlordMessagesPageState extends State<LandlordMessagesPage> {
   }
 
   Future<void> _openChat(ChatContact contact) async {
+    if (_openingChat) return;
+
     if (contact.id.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -383,25 +386,37 @@ class _LandlordMessagesPageState extends State<LandlordMessagesPage> {
           behavior: SnackBarBehavior.floating,
         ),
       );
-
       return;
     }
 
-    final result = await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => LandlordChatPage(
-          landlord: widget.landlord,
-          contact: contact,
-        ),
-      ),
-    );
+    setState(() => _openingChat = true);
 
-    /*
-     * Refresh the conversation preview when returning from chat.
-     */
-    if (result == true && mounted) {
-      await _loadContacts();
+    try {
+      final result = await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => LandlordChatPage(
+            landlord: widget.landlord,
+            contact: contact,
+          ),
+        ),
+      );
+
+      if (result == true && mounted) {
+        await _loadContacts();
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Could not open this conversation: $e'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _openingChat = false);
+      }
     }
   }
 
@@ -572,7 +587,7 @@ class _LandlordMessagesPageState extends State<LandlordMessagesPage> {
                 ),
               )
             : const Icon(Icons.chevron_right),
-        onTap: () => _openChat(contact),
+        onTap: _openingChat ? null : () => _openChat(contact),
       ),
     );
   }
