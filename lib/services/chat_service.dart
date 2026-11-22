@@ -8,6 +8,7 @@ class ChatService {
   final SupabaseClient supabase = Supabase.instance.client;
 
   RealtimeChannel? _channel;
+  StreamController<Message>? _messageController;
 
   String? get currentUserId {
     return supabase.auth.currentUser?.id;
@@ -107,7 +108,8 @@ class ChatService {
   // ============================================================
 
   Stream<Message> subscribeToMessages({required String conversationId}) {
-    final controller = StreamController<Message>();
+    final controller = StreamController<Message>.broadcast();
+    _messageController = controller;
 
     _channel = supabase
         .channel('conversation_$conversationId')
@@ -172,6 +174,12 @@ class ChatService {
     if (_channel != null) {
       await supabase.removeChannel(_channel!);
       _channel = null;
+    }
+
+    final controller = _messageController;
+    _messageController = null;
+    if (controller != null && !controller.isClosed) {
+      await controller.close();
     }
   }
 }
