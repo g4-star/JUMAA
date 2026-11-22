@@ -163,11 +163,7 @@ class _ChatScreenState extends State<ChatScreen> {
       _scrollToBottom();
 
       if (message.senderId != _currentUserId) {
-        _chatService.markDelivered(message.id).then((_) {
-          return _chatService.markRead(message.id);
-        }).catchError((error) {
-          debugPrint('CHAT READ STATUS ERROR: $error');
-        });
+        _markMessageRead(message);
       }
     });
   }
