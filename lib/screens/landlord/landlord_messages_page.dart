@@ -1267,15 +1267,32 @@ class _LandlordChatPageState extends State<LandlordChatPage> {
                               .onSurface,
                     ),
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    _formatTime(message.createdAt),
-                    style: TextStyle(
-                      fontSize: 10,
-                      color: isMine
-                          ? Colors.white70
-                          : Colors.grey.shade600,
-                    ),
+                  const SizedBox(height: 5),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        _formatTime(message.createdAt),
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: isMine
+                              ? Theme.of(context).colorScheme.onPrimary.withValues(alpha: 0.72)
+                              : Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                      if (isMine) ...[
+                        const SizedBox(width: 4),
+                        Icon(
+                          message.status == 'read'
+                              ? Icons.done_all_rounded
+                              : Icons.done_rounded,
+                          size: 14,
+                          color: message.status == 'read'
+                              ? const Color(0xFF53BDEB)
+                              : Theme.of(context).colorScheme.onPrimary.withValues(alpha: 0.72),
+                        ),
+                      ],
+                    ],
                   ),
                 ],
               ),
