@@ -433,7 +433,7 @@ class _ApartmentAppState extends State<ApartmentApp> {
                             children: [
                               Icon(
                                 Icons.wifi_off_rounded,
-                                color: const Color(0xFFFFFFFF),
+                                color: Colors.white,
                                 size: 18,
                               ),
                               SizedBox(width: 8),
