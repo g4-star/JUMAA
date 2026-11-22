@@ -129,7 +129,11 @@ class _ChatScreenState extends State<ChatScreen> {
       _scrollToBottom();
 
       if (message.senderId != _currentUserId) {
-        _chatService.markDelivered(message.id);
+        _chatService.markDelivered(message.id).then((_) {
+          return _chatService.markRead(message.id);
+        }).catchError((error) {
+          debugPrint('CHAT READ STATUS ERROR: $error');
+        });
       }
     });
   }
@@ -147,18 +151,22 @@ class _ChatScreenState extends State<ChatScreen> {
       return;
     }
 
-    _messageController.clear();
-
     setState(() {
       _sending = true;
     });
 
     try {
-      await _chatService.sendMessage(
+      final sentMessage = await _chatService.sendMessage(
         conversationId: conversationId,
         receiverId: widget.landlordId,
         message: text,
       );
+
+      _messageController.clear();
+      if (mounted && !_messages.any((item) => item.id == sentMessage.id)) {
+        setState(() => _messages.add(sentMessage));
+        _scrollToBottom();
+      }
     } catch (e) {
       if (!mounted) return;
 
@@ -257,7 +265,6 @@ class _ChatScreenState extends State<ChatScreen> {
       child: SafeArea(
         child: Row(
           children: [
-            IconButton(icon: const Icon(Icons.attach_file), onPressed: () {}),
             Expanded(
               child: TextField(
                 controller: _messageController,
@@ -270,9 +277,13 @@ class _ChatScreenState extends State<ChatScreen> {
                     borderSide: BorderSide.none,
                   ),
                   filled: true,
-                  fillColor: isDark
-                      ? Colors.grey.shade800
-                      : Colors.grey.shade100,
+                  fillColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+                  hintStyle: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurface,
+                  ),
                   contentPadding: const EdgeInsets.symmetric(
                     horizontal: 18,
                     vertical: 12,
@@ -283,7 +294,9 @@ class _ChatScreenState extends State<ChatScreen> {
             const SizedBox(width: 8),
             CircleAvatar(
               radius: 24,
+              backgroundColor: Theme.of(context).colorScheme.primary,
               child: IconButton(
+                color: Theme.of(context).colorScheme.onPrimary,
                 icon: _sending
                     ? const SizedBox(
                         width: 18,
@@ -310,9 +323,7 @@ class _ChatScreenState extends State<ChatScreen> {
         decoration: BoxDecoration(
           color: isMe
               ? Theme.of(context).colorScheme.primary
-              : isDark
-              ? Colors.grey.shade800
-              : Colors.grey.shade100,
+              : Theme.of(context).colorScheme.surfaceContainerHighest,
           borderRadius: BorderRadius.only(
             topLeft: const Radius.circular(18),
             topRight: const Radius.circular(18),
@@ -329,21 +340,35 @@ class _ChatScreenState extends State<ChatScreen> {
               message.content,
               style: TextStyle(
                 color: isMe
-                    ? Colors.white
-                    : isDark
-                    ? Colors.white
-                    : Colors.black87,
+                    ? Theme.of(context).colorScheme.onPrimary
+                    : Theme.of(context).colorScheme.onSurface,
                 fontSize: 15,
                 height: 1.4,
               ),
             ),
             const SizedBox(height: 4),
-            Text(
-              _formatTime(message.createdAt),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  _formatTime(message.createdAt),
               style: TextStyle(
-                color: isMe ? Colors.white70 : Colors.grey.shade500,
-                fontSize: 10,
-              ),
+                color: isMe
+                    ? Theme.of(context).colorScheme.onPrimary.withValues(alpha: 0.72)
+                    : Theme.of(context).colorScheme.onSurfaceVariant,
+                  fontSize: 10,
+                ),
+                if (isMe) ...[
+                  const SizedBox(width: 4),
+                  Icon(
+                    message.status == 'read' ? Icons.done_all_rounded : Icons.done_rounded,
+                    size: 14,
+                    color: message.status == 'read'
+                        ? const Color(0xFF53BDEB)
+                        : Theme.of(context).colorScheme.onPrimary.withValues(alpha: 0.72),
+                  ),
+                ],
+              ],
             ),
           ],
         ),
