@@ -663,6 +663,7 @@ class _LandlordChatPageState extends State<LandlordChatPage> {
   List<ChatMessage> _messages = [];
 
   String? _conversationId;
+  RealtimeChannel? _messageChannel;
 
   bool _loading = true;
   bool _sending = false;
@@ -688,9 +689,121 @@ class _LandlordChatPageState extends State<LandlordChatPage> {
 
   @override
   void dispose() {
+    final channel = _messageChannel;
+    _messageChannel = null;
+    if (channel != null) {
+      _supabase.removeChannel(channel);
+    }
     _messageController.dispose();
     _scrollController.dispose();
     super.dispose();
+  }
+
+  void _subscribeToConversation(String conversationId) {
+    if (_messageChannel != null) return;
+
+    _messageChannel = _supabase
+        .channel('landlord_chat_$conversationId')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.insert,
+          schema: 'public',
+          table: 'messages',
+          callback: (payload) {
+            final row = payload.newRecord;
+            if (row['conversation_id']?.toString() != conversationId) return;
+
+            final message = ChatMessage(
+              id: row['id']?.toString() ?? '',
+              senderId: row['sender_id']?.toString() ?? '',
+              receiverId: row['receiver_id']?.toString() ?? '',
+              conversationId: row['conversation_id']?.toString() ?? '',
+              message: row['message']?.toString() ?? '',
+              createdAt: DateTime.tryParse(row['created_at']?.toString() ?? '') ??
+                  DateTime.now(),
+              status: row['status']?.toString() ?? 'sent',
+            );
+
+            if (!mounted || message.id.isEmpty) return;
+            if (!_messages.any((item) => item.id == message.id)) {
+              setState(() => _messages.add(message));
+              _scrollToBottom();
+            }
+
+            if (message.receiverId == _currentUserId &&
+                message.status != 'read') {
+              _markMessageRead(message.id);
+            }
+          },
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.update,
+          schema: 'public',
+          table: 'messages',
+          callback: (payload) {
+            final row = payload.newRecord;
+            if (row['conversation_id']?.toString() != conversationId) return;
+
+            final id = row['id']?.toString() ?? '';
+            final index = _messages.indexWhere((item) => item.id == id);
+            if (!mounted || index < 0) return;
+
+            setState(() {
+              final old = _messages[index];
+              _messages[index] = ChatMessage(
+                id: old.id,
+                senderId: old.senderId,
+                receiverId: old.receiverId,
+                conversationId: old.conversationId,
+                message: old.message,
+                createdAt: old.createdAt,
+                status: row['status']?.toString() ?? old.status,
+              );
+            });
+          },
+        )
+        .subscribe();
+  }
+
+  Future<void> _markMessageRead(String messageId) async {
+    try {
+      await _supabase.from('messages').update({
+        'status': 'read',
+        'delivered_at': DateTime.now().toUtc().toIso8601String(),
+        'read_at': DateTime.now().toUtc().toIso8601String(),
+      }).eq('id', messageId).eq('receiver_id', _currentUserId);
+
+      if (!mounted) return;
+      final index = _messages.indexWhere((item) => item.id == messageId);
+      if (index < 0) return;
+
+      setState(() {
+        final old = _messages[index];
+        _messages[index] = ChatMessage(
+          id: old.id,
+          senderId: old.senderId,
+          receiverId: old.receiverId,
+          conversationId: old.conversationId,
+          message: old.message,
+          createdAt: old.createdAt,
+          status: 'read',
+        );
+      });
+    } catch (e) {
+      debugPrint('LANDLORD CHAT READ STATUS ERROR: $e');
+    }
+  }
+
+  Future<void> _markLoadedMessagesRead() async {
+    final unread = _messages
+        .where((message) =>
+            message.receiverId == _currentUserId && message.status != 'read')
+        .map((message) => message.id)
+        .where((id) => id.isNotEmpty)
+        .toList();
+
+    for (final id in unread) {
+      await _markMessageRead(id);
+    }
   }
 
   Future<void> _loadMessages() async {
@@ -760,6 +873,9 @@ class _LandlordChatPageState extends State<LandlordChatPage> {
         _loading = false;
       });
 
+      _subscribeToConversation(_conversationId!);
+      await _markLoadedMessagesRead();
+
       debugPrint(
         'LANDLORD CHAT: loaded ${loadedMessages.length} messages '
         'for conversation=$_conversationId',
@@ -825,8 +941,9 @@ class _LandlordChatPageState extends State<LandlordChatPage> {
     }
 
     _conversationId = conversationId;
+    _subscribeToConversation(conversationId);
 
-    debugPrint(
+    debugPrint,
       'LANDLORD CHAT: conversation ready=$_conversationId',
     );
 
