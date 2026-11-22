@@ -16554,9 +16554,11 @@ class _PublicUserPageState extends State<PublicUserPage> {
 
             return Container(
               height: MediaQuery.of(context).size.height * 0.82,
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surface,
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(28),
+                ),
               ),
               child: SafeArea(
                 child: Column(
@@ -16573,19 +16575,17 @@ class _PublicUserPageState extends State<PublicUserPage> {
                                   .withValues(alpha: 0.10),
                               borderRadius: BorderRadius.circular(14),
                             ),
-                            child: const Icon(
+                            child: Icon(
                               Icons.tune_rounded,
-                              color: Color(0xFF0B3D2E),
+                              color: Theme.of(context).colorScheme.primary,
                             ),
                           ),
                           const SizedBox(width: 12),
-                          const Expanded(
+                          Expanded(
                             child: Text(
                               'Filter Apartments',
-                              style: TextStyle(
-                                fontSize: 22,
-                                fontWeight: FontWeight.w800,
-                              ),
+                              style: Theme.of(context).textTheme.titleLarge
+                                  ?.copyWith(fontWeight: FontWeight.w800),
                             ),
                           ),
                           IconButton(
@@ -16602,12 +16602,11 @@ class _PublicUserPageState extends State<PublicUserPage> {
                       child: ListView(
                         padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
                         children: [
-                          const Text(
+                          Text(
                             'LOCATION',
-                            style: TextStyle(
-                              fontSize: 12,
+                            style: Theme.of(context).textTheme.labelLarge?.copyWith(
                               fontWeight: FontWeight.w800,
-                              color: Colors.black54,
+                              color: Theme.of(context).colorScheme.onSurfaceVariant,
                               letterSpacing: 1,
                             ),
                           ),
@@ -16677,12 +16676,11 @@ class _PublicUserPageState extends State<PublicUserPage> {
 
                           const SizedBox(height: 24),
 
-                          const Text(
+                          Text(
                             'APARTMENT',
-                            style: TextStyle(
-                              fontSize: 12,
+                            style: Theme.of(context).textTheme.labelLarge?.copyWith(
                               fontWeight: FontWeight.w800,
-                              color: Colors.black54,
+                              color: Theme.of(context).colorScheme.onSurfaceVariant,
                               letterSpacing: 1,
                             ),
                           ),
@@ -16753,12 +16751,11 @@ class _PublicUserPageState extends State<PublicUserPage> {
 
                           const SizedBox(height: 24),
 
-                          const Text(
+                          Text(
                             'SORT & PROMOTION',
-                            style: TextStyle(
-                              fontSize: 12,
+                            style: Theme.of(context).textTheme.labelLarge?.copyWith(
                               fontWeight: FontWeight.w800,
-                              color: Colors.black54,
+                              color: Theme.of(context).colorScheme.onSurfaceVariant,
                               letterSpacing: 1,
                             ),
                           ),
@@ -17100,9 +17097,12 @@ class _PublicUserPageState extends State<PublicUserPage> {
 
             const SizedBox(height: 8),
 
-            const Text(
+            Text(
               'Search apartments and connect with landlords.',
-              style: TextStyle(color: Colors.black54, height: 1.4),
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                height: 1.4,
+              ),
             ),
 
             const SizedBox(height: 24),
@@ -17121,7 +17121,7 @@ class _PublicUserPageState extends State<PublicUserPage> {
                       )
                     : null,
                 filled: true,
-                fillColor: Colors.white,
+                fillColor: Theme.of(context).colorScheme.surfaceContainerHighest,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(18),
                   borderSide: BorderSide.none,
@@ -17228,7 +17228,7 @@ class _PublicUserPageState extends State<PublicUserPage> {
                                             ? Colors.white.withValues(
                                                 alpha: 0.82,
                                               )
-                                            : Colors.black54,
+                                            : Colors.white.withValues(alpha: 0.88),
                                       ),
                                     ),
                                   ],
@@ -17289,7 +17289,10 @@ class _PublicUserPageState extends State<PublicUserPage> {
 
             Text(
               '${properties.length} propert${properties.length == 1 ? 'y' : 'ies'} found',
-              style: const TextStyle(fontWeight: FontWeight.w600),
+              style: TextStyle(
+                fontWeight: FontWeight.w600,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
             ),
 
             const SizedBox(height: 12),
@@ -17325,7 +17328,9 @@ class _PublicUserPageState extends State<PublicUserPage> {
                             Text(
                               _loadError!,
                               textAlign: TextAlign.center,
-                              style: const TextStyle(color: Colors.black54),
+                              style: TextStyle(
+                              color: Theme.of(context).colorScheme.onSurfaceVariant,
+                            ),
                             ),
                             const SizedBox(height: 16),
                             ElevatedButton.icon(
@@ -17352,17 +17357,19 @@ class _PublicUserPageState extends State<PublicUserPage> {
                             color: Colors.grey.shade400,
                           ),
                           const SizedBox(height: 15),
-                          const Text(
+                          Text(
                             'No apartments found',
-                            style: TextStyle(
-                              fontSize: 18,
+                            style: Theme.of(context).textTheme.titleMedium?.copyWith(
                               fontWeight: FontWeight.bold,
+                              color: Theme.of(context).colorScheme.onSurface,
                             ),
                           ),
                           const SizedBox(height: 6),
-                          const Text(
+                          Text(
                             'Try another search.',
-                            style: TextStyle(color: Colors.black54),
+                            style: TextStyle(
+                              color: Theme.of(context).colorScheme.onSurfaceVariant,
+                            ),
                           ),
                         ],
                       ),
@@ -17512,7 +17519,7 @@ class _PublicUserPageState extends State<PublicUserPage> {
               placeholder: Container(
                 height: 190,
                 width: double.infinity,
-                color: const Color(0xFFE8F3EE),
+                color: Theme.of(context).colorScheme.surfaceContainerHighest,
                 child: const Icon(
                   Icons.apartment,
                   size: 60,
@@ -17600,7 +17607,9 @@ class _PublicUserPageState extends State<PublicUserPage> {
                             : property.address.isNotEmpty
                             ? property.address
                             : 'Location not provided',
-                        style: const TextStyle(color: Colors.black54),
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
                       ),
                     ),
                   ],
@@ -17628,7 +17637,10 @@ class _PublicUserPageState extends State<PublicUserPage> {
                   const SizedBox(height: 10),
                   Text(
                     listing.unitTypes.join(' • '),
-                    style: const TextStyle(color: Colors.black54, fontSize: 13),
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      fontSize: 13,
+                    ),
                   ),
                 ],
 
@@ -17638,7 +17650,10 @@ class _PublicUserPageState extends State<PublicUserPage> {
                     property.description,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(color: Colors.black54, height: 1.35),
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      height: 1.35,
+                    ),
                   ),
                 ],
 
