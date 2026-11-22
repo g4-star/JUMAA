@@ -116,14 +116,16 @@ class _ChatScreenState extends State<ChatScreen> {
     ) {
       if (!mounted) return;
 
-      final alreadyExists = _messages.any(
+      final existingIndex = _messages.indexWhere(
         (existing) => existing.id == message.id,
       );
 
-      if (alreadyExists) return;
-
       setState(() {
-        _messages.add(message);
+        if (existingIndex >= 0) {
+          _messages[existingIndex] = message;
+        } else {
+          _messages.add(message);
+        }
       });
 
       _scrollToBottom();
