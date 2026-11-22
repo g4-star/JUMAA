@@ -175,21 +175,23 @@ class _LandlordMessagesPageState extends State<LandlordMessagesPage> {
       // ------------------------------------------------------------
       // HELPER: GET LATEST MESSAGE
       // ------------------------------------------------------------
-      Future<String> latestMessage(String? conversationId) async {
+      Future<Map<String, dynamic>?> latestMessage(
+        String? conversationId,
+      ) async {
         if (conversationId == null || conversationId.isEmpty) {
-          return '';
+          return null;
         }
 
         try {
           final rows = await _supabase
               .from('messages')
-              .select('message, created_at, sender_id')
+              .select('message, created_at, sender_id, receiver_id, status')
               .eq('conversation_id', conversationId)
               .order('created_at', ascending: false)
               .limit(1);
 
           if (rows.isNotEmpty) {
-            return rows.first['message']?.toString() ?? '';
+            return Map<String, dynamic>.from(rows.first);
           }
         } catch (e) {
           debugPrint(
@@ -198,7 +200,7 @@ class _LandlordMessagesPageState extends State<LandlordMessagesPage> {
           );
         }
 
-        return '';
+        return null;
       }
 
       final contacts = <ChatContact>[];
@@ -257,12 +259,13 @@ class _LandlordMessagesPageState extends State<LandlordMessagesPage> {
             id: ownerId,
             name: ownerName,
             type: 'Owner',
-            unread: false,
+            unread: ownerLastMessage?['receiver_id']?.toString() == _currentUserId &&
+                ownerLastMessage?['status']?.toString() != 'read',
             conversationId: ownerConversationId,
             unitId: '',
             email: ownerEmail,
             phone: ownerPhone,
-            lastMessage: ownerLastMessage,
+            lastMessage: ownerLastMessage?['message']?.toString() ?? '',
           ),
         );
 
@@ -313,12 +316,13 @@ class _LandlordMessagesPageState extends State<LandlordMessagesPage> {
                 : tenantId,
             name: tenantName,
             type: 'Tenant',
-            unread: false,
+            unread: lastMessage?['receiver_id']?.toString() == _currentUserId &&
+                lastMessage?['status']?.toString() != 'read',
             conversationId: conversationId,
             unitId: unitId,
             email: tenant['email']?.toString() ?? '',
             phone: tenant['phone']?.toString() ?? '',
-            lastMessage: lastMessage,
+            lastMessage: lastMessage?['message']?.toString() ?? '',
           ),
         );
 
