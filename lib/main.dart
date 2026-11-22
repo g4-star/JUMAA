@@ -433,7 +433,7 @@ class _ApartmentAppState extends State<ApartmentApp> {
                             children: [
                               Icon(
                                 Icons.wifi_off_rounded,
-                                color: Colors.white,
+                                color: const Color(0xFFFFFFFF),
                                 size: 18,
                               ),
                               SizedBox(width: 8),
@@ -19752,6 +19752,7 @@ class _TenantChatConversationScreenState
   final ScrollController _scrollController = ScrollController();
 
   List<Map<String, dynamic>> _messages = [];
+  RealtimeChannel? _messageChannel;
   bool _loading = true;
   bool _sending = false;
 
@@ -19764,14 +19765,102 @@ class _TenantChatConversationScreenState
   @override
   void initState() {
     super.initState();
+    _subscribeToMessages();
     _loadMessages();
   }
 
   @override
   void dispose() {
+    final channel = _messageChannel;
+    _messageChannel = null;
+    if (channel != null) {
+      OpenNestStore.supabase.removeChannel(channel);
+    }
     _messageController.dispose();
     _scrollController.dispose();
     super.dispose();
+  }
+
+  void _subscribeToMessages() {
+    _messageChannel = OpenNestStore.supabase
+        .channel('tenant_chat_\${widget.conversationId}')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.insert,
+          schema: 'public',
+          table: 'messages',
+          callback: (payload) {
+            final row = Map<String, dynamic>.from(payload.newRecord);
+            if (row['conversation_id']?.toString() != widget.conversationId) {
+              return;
+            }
+            _handleRealtimeMessage(row);
+          },
+        )
+        .subscribe();
+  }
+
+  Future<void> _handleRealtimeMessage(Map<String, dynamic> row) async {
+    final messageId = row['id']?.toString() ?? '';
+    if (messageId.isEmpty || !mounted) return;
+
+    if (!_messages.any((message) => message['id']?.toString() == messageId)) {
+      setState(() => _messages.add(row));
+      _scrollToBottom();
+    }
+
+    if (row['receiver_id']?.toString() == widget.currentUserId &&
+        row['status']?.toString() != 'read') {
+      try {
+        await OpenNestStore.supabase.from('messages').update({
+          'status': 'read',
+          'delivered_at': DateTime.now().toUtc().toIso8601String(),
+          'read_at': DateTime.now().toUtc().toIso8601String(),
+        }).eq('id', messageId).eq('receiver_id', widget.currentUserId);
+
+        if (!mounted) return;
+        final index = _messages.indexWhere(
+          (message) => message['id']?.toString() == messageId,
+        );
+        if (index >= 0) {
+          setState(() {
+            _messages[index] = {..._messages[index], 'status': 'read'};
+          });
+        }
+      } catch (e) {
+        debugPrint('TENANT CHAT READ STATUS ERROR: $e');
+      }
+    }
+  }
+
+  Future<void> _markLoadedMessagesRead() async {
+    final unreadIds = _messages
+        .where((message) =>
+            message['receiver_id']?.toString() == widget.currentUserId &&
+            message['status']?.toString() != 'read')
+        .map((message) => message['id']?.toString() ?? '')
+        .where((id) => id.isNotEmpty)
+        .toList();
+
+    for (final id in unreadIds) {
+      try {
+        await OpenNestStore.supabase.from('messages').update({
+          'status': 'read',
+          'delivered_at': DateTime.now().toUtc().toIso8601String(),
+          'read_at': DateTime.now().toUtc().toIso8601String(),
+        }).eq('id', id).eq('receiver_id', widget.currentUserId);
+      } catch (e) {
+        debugPrint('TENANT CHAT READ STATUS ERROR: $e');
+      }
+    }
+
+    if (!mounted || unreadIds.isEmpty) return;
+    setState(() {
+      _messages = _messages.map((message) {
+        return unreadIds.contains(message['id']?.toString())
+            ? {...message, 'status': 'read'}
+            : message;
+      }).toList();
+    });
   }
 
   Future<void> _loadMessages() async {
@@ -19795,6 +19884,7 @@ class _TenantChatConversationScreenState
         _loading = false;
       });
 
+      await _markLoadedMessagesRead();
       _scrollToBottom();
     } catch (e) {
       debugPrint('TENANT CHAT LOAD ERROR: $e');
@@ -19820,17 +19910,27 @@ class _TenantChatConversationScreenState
     });
 
     try {
-      await OpenNestStore.supabase.from('messages').insert({
-        'sender_id': widget.currentUserId,
-        'receiver_id': _receiverId,
-        'conversation_id': widget.conversationId,
-        'message': text,
-        'status': 'sent',
-      });
+      final inserted = await OpenNestStore.supabase
+          .from('messages')
+          .insert({
+            'sender_id': widget.currentUserId,
+            'receiver_id': _receiverId,
+            'conversation_id': widget.conversationId,
+            'message': text,
+            'status': 'sent',
+          })
+          .select(
+            'id, sender_id, receiver_id, conversation_id, message, status, created_at',
+          )
+          .single();
 
       _messageController.clear();
-
-      await _loadMessages();
+      if (mounted && !_messages.any(
+        (message) => message['id']?.toString() == inserted['id']?.toString(),
+      )) {
+        setState(() => _messages.add(Map<String, dynamic>.from(inserted)));
+        _scrollToBottom();
+      }
     } catch (e) {
       debugPrint('TENANT CHAT SEND ERROR: $e');
 
@@ -19873,58 +19973,73 @@ class _TenantChatConversationScreenState
   }
 
   Widget _buildBubble(Map<String, dynamic> message) {
-    final sender = message['sender_id']?.toString() ?? '';
-
-    final isMine = sender == widget.currentUserId;
-
-    final text = message['message']?.toString() ?? '';
+    final isMine = message['sender_id']?.toString() == widget.currentUserId;
+    final colors = Theme.of(context).colorScheme;
+    final status = message['status']?.toString() ?? 'sent';
 
     return Align(
       alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
-        constraints: const BoxConstraints(maxWidth: 290),
-        margin: const EdgeInsets.only(left: 8, right: 8, bottom: 5),
-        padding: const EdgeInsets.fromLTRB(10, 7, 8, 6),
+        constraints: BoxConstraints(
+          maxWidth: MediaQuery.of(context).size.width * 0.78,
+        ),
+        margin: const EdgeInsets.only(left: 8, right: 8, bottom: 8),
+        padding: const EdgeInsets.fromLTRB(14, 10, 11, 8),
         decoration: BoxDecoration(
-          color: isMine ? const Color(0xFFD9FDD3) : Colors.white,
+          color: isMine ? colors.primary : colors.surfaceContainerHighest,
           borderRadius: BorderRadius.only(
-            topLeft: const Radius.circular(10),
-            topRight: const Radius.circular(10),
-            bottomLeft: Radius.circular(isMine ? 10 : 2),
-            bottomRight: Radius.circular(isMine ? 2 : 10),
+            topLeft: const Radius.circular(18),
+            topRight: const Radius.circular(18),
+            bottomLeft: Radius.circular(isMine ? 18 : 5),
+            bottomRight: Radius.circular(isMine ? 5 : 18),
           ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.04),
-              blurRadius: 2,
+              color: Colors.black.withValues(alpha: 0.05),
+              blurRadius: 7,
+              offset: const Offset(0, 2),
             ),
           ],
         ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.end,
+        child: Column(
+          crossAxisAlignment:
+              isMine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
           children: [
-            Flexible(
-              child: Text(
-                text,
-                style: const TextStyle(fontSize: 14, height: 1.3),
-              ),
-            ),
-            const SizedBox(width: 7),
             Text(
-              _formatTime(message['created_at']),
-              style: TextStyle(fontSize: 9, color: Colors.grey.shade600),
-            ),
-            if (isMine) ...[
-              const SizedBox(width: 3),
-              Icon(
-                message['status'] == 'read' ? Icons.done_all : Icons.done,
-                size: 13,
-                color: message['status'] == 'read'
-                    ? const Color(0xFF53BDEB)
-                    : Colors.grey,
+              message['message']?.toString() ?? '',
+              style: TextStyle(
+                color: isMine ? colors.onPrimary : colors.onSurface,
+                fontSize: 14.5,
+                height: 1.35,
               ),
-            ],
+            ),
+            const SizedBox(height: 5),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  _formatTime(message['created_at']),
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: isMine
+                        ? colors.onPrimary.withValues(alpha: 0.72)
+                        : colors.onSurfaceVariant,
+                  ),
+                ),
+                if (isMine) ...[
+                  const SizedBox(width: 4),
+                  Icon(
+                    status == 'read'
+                        ? Icons.done_all_rounded
+                        : Icons.done_rounded,
+                    size: 14,
+                    color: status == 'read'
+                        ? const Color(0xFF53BDEB)
+                        : colors.onPrimary.withValues(alpha: 0.72),
+                  ),
+                ],
+              ],
+            ),
           ],
         ),
       ),
@@ -19932,119 +20047,131 @@ class _TenantChatConversationScreenState
   }
 
   Widget _buildInput() {
+    final colors = Theme.of(context).colorScheme;
+
     return Container(
-      padding: const EdgeInsets.fromLTRB(8, 7, 8, 8),
+      padding: const EdgeInsets.fromLTRB(12, 9, 12, 10),
       decoration: BoxDecoration(
-        color: Colors.white,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.08),
-            blurRadius: 8,
-            offset: const Offset(0, -2),
-          ),
-        ],
+        color: colors.surface,
+        border: Border(
+          top: BorderSide(color: colors.outlineVariant.withValues(alpha: 0.55)),
+        ),
       ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          Expanded(
-            child: TextField(
-              controller: _messageController,
-              minLines: 1,
-              maxLines: 5,
-              textInputAction: TextInputAction.newline,
-              decoration: InputDecoration(
-                hintText: 'Type a message...',
-                filled: true,
-                fillColor: const Color(0xFFF2F3F5),
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 11,
+      child: SafeArea(
+        top: false,
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Expanded(
+              child: TextField(
+                controller: _messageController,
+                minLines: 1,
+                maxLines: 5,
+                textInputAction: TextInputAction.newline,
+                style: TextStyle(color: colors.onSurface),
+                decoration: InputDecoration(
+                  hintText: 'Write a message...',
+                  hintStyle: TextStyle(color: colors.onSurfaceVariant),
+                  filled: true,
+                  fillColor: colors.surfaceContainerHighest,
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 17,
+                    vertical: 12,
+                  ),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(24),
+                    borderSide: BorderSide.none,
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(24),
+                    borderSide: BorderSide.none,
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(24),
+                    borderSide: BorderSide(color: colors.primary, width: 1.2),
+                  ),
                 ),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(24),
-                  borderSide: BorderSide.none,
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(24),
-                  borderSide: BorderSide.none,
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(24),
-                  borderSide: const BorderSide(color: Color(0xFF075E54)),
-                ),
-              ),
-              onSubmitted: (_) => _sendMessage(),
-            ),
-          ),
-          const SizedBox(width: 7),
-          Material(
-            color: const Color(0xFF075E54),
-            shape: const CircleBorder(),
-            child: InkWell(
-              customBorder: const CircleBorder(),
-              onTap: _sending ? null : _sendMessage,
-              child: Padding(
-                padding: const EdgeInsets.all(13),
-                child: _sending
-                    ? const SizedBox(
-                        height: 20,
-                        width: 20,
-                        child: CircularProgressIndicator(
-                          color: Colors.white,
-                          strokeWidth: 2,
-                        ),
-                      )
-                    : const Icon(Icons.send, color: Colors.white, size: 21),
+                onSubmitted: (_) => _sendMessage(),
               ),
             ),
-          ),
-        ],
+            const SizedBox(width: 9),
+            Material(
+              color: colors.primary,
+              shape: const CircleBorder(),
+              child: InkWell(
+                customBorder: const CircleBorder(),
+                onTap: _sending ? null : _sendMessage,
+                child: SizedBox(
+                  width: 48,
+                  height: 48,
+                  child: Center(
+                    child: _sending
+                        ? SizedBox(
+                            height: 19,
+                            width: 19,
+                            child: CircularProgressIndicator(
+                              color: colors.onPrimary,
+                              strokeWidth: 2,
+                            ),
+                          )
+                        : Icon(Icons.send_rounded, color: colors.onPrimary),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+
     return Scaffold(
-      backgroundColor: const Color(0xFFEFE7DE),
+      backgroundColor: colors.surface,
       appBar: AppBar(
-        toolbarHeight: 58,
+        toolbarHeight: 66,
         elevation: 0,
-        backgroundColor: const Color(0xFF075E54),
-        foregroundColor: Colors.white,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.pop(context),
-        ),
+        backgroundColor: colors.surface,
+        foregroundColor: colors.onSurface,
+        surfaceTintColor: Colors.transparent,
         titleSpacing: 0,
         title: Row(
           children: [
             CircleAvatar(
-              radius: 18,
-              backgroundColor: const Color(0xFF128C7E),
+              radius: 20,
+              backgroundColor: colors.primaryContainer,
               child: Icon(
                 _isLandlord ? Icons.home_work_outlined : Icons.person_outline,
-                color: Colors.white,
-                size: 20,
+                color: colors.onPrimaryContainer,
+                size: 21,
               ),
             ),
-            const SizedBox(width: 9),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  _contactName,
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
+            const SizedBox(width: 11),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    _contactName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
-                ),
-                Text(
-                  _isLandlord ? 'Landlord' : 'Tenant',
-                  style: const TextStyle(fontSize: 11, color: Colors.white70),
-                ),
-              ],
+                  Text(
+                    _isLandlord ? 'Landlord' : 'Apartment member',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: colors.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ],
         ),
@@ -20060,12 +20187,29 @@ class _TenantChatConversationScreenState
                       child: _messages.isEmpty
                           ? ListView(
                               physics: const AlwaysScrollableScrollPhysics(),
-                              children: const [
-                                SizedBox(height: 230),
+                              children: [
+                                const SizedBox(height: 150),
+                                Icon(
+                                  Icons.forum_outlined,
+                                  size: 52,
+                                  color: colors.onSurfaceVariant.withValues(alpha: 0.65),
+                                ),
+                                const SizedBox(height: 14),
                                 Center(
                                   child: Text(
-                                    'No messages yet',
-                                    style: TextStyle(color: Colors.grey),
+                                    'Start a conversation',
+                                    style: TextStyle(
+                                      fontSize: 17,
+                                      fontWeight: FontWeight.w700,
+                                      color: colors.onSurface,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 6),
+                                Center(
+                                  child: Text(
+                                    'Send a message to $_contactName',
+                                    style: TextStyle(color: colors.onSurfaceVariant),
                                   ),
                                 ),
                               ],
@@ -20073,11 +20217,10 @@ class _TenantChatConversationScreenState
                           : ListView.builder(
                               controller: _scrollController,
                               physics: const AlwaysScrollableScrollPhysics(),
-                              padding: const EdgeInsets.only(top: 8, bottom: 8),
+                              padding: const EdgeInsets.fromLTRB(12, 14, 12, 12),
                               itemCount: _messages.length,
-                              itemBuilder: (context, index) {
-                                return _buildBubble(_messages[index]);
-                              },
+                              itemBuilder: (context, index) =>
+                                  _buildBubble(_messages[index]),
                             ),
                     ),
             ),
