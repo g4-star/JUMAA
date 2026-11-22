@@ -943,7 +943,7 @@ class _LandlordChatPageState extends State<LandlordChatPage> {
     _conversationId = conversationId;
     _subscribeToConversation(conversationId);
 
-    debugPrint,
+    debugPrint(
       'LANDLORD CHAT: conversation ready=$_conversationId',
     );
 
