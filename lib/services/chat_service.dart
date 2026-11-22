@@ -92,7 +92,7 @@ class ChatService {
     final text = message.trim();
 
     if (text.isEmpty) {
-      return;
+      throw ArgumentError('Message cannot be empty.');
     }
 
     final row = await supabase
