@@ -403,6 +403,91 @@ $$;
 revoke all on function public.reschedule_jumaa_subscription(uuid, timestamptz, text, text) from public, anon;
 grant execute on function public.reschedule_jumaa_subscription(uuid, timestamptz, text, text) to authenticated;
 
+-- Automatically apply complete months already funded by verified property
+-- credit before asking the owner for another payment.
+create or replace function public.apply_jumaa_subscription_credit(p_subscription_id uuid)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $apply_credit$
+declare
+  v_sub public.subscriptions%rowtype;
+  v_caller uuid := auth.uid();
+  v_role text := coalesce(current_setting('request.jwt.claim.role', true), '');
+  v_rate numeric(12,2);
+  v_credit numeric(12,2);
+  v_months integer;
+  v_start date;
+  v_end date;
+  v_after numeric(12,2);
+begin
+  select * into v_sub
+  from public.subscriptions
+  where id = p_subscription_id
+  for update;
+  if not found then raise exception 'Subscription not found.'; end if;
+
+  if v_role <> 'service_role' and (
+    v_caller is null
+    or v_caller <> v_sub.owner_id
+    or not exists (
+      select 1 from public.profiles p
+      where p.id = v_caller
+        and lower(coalesce(p.role, '')) in ('owner', 'jumaa_owner')
+    )
+  ) then
+    raise exception 'You are not authorized to apply credit to this property subscription.';
+  end if;
+
+  v_rate := greatest(coalesce(v_sub.monthly_amount, 0), 0);
+  v_credit := greatest(coalesce(v_sub.available_credit_amount, 0), 0);
+  if v_rate <= 0 or v_credit < v_rate then
+    return jsonb_build_object(
+      'success', true,
+      'months_applied', 0,
+      'available_credit', v_credit
+    );
+  end if;
+
+  v_months := floor(v_credit / v_rate)::integer;
+  v_start := coalesce(v_sub.next_payment_at::date, v_sub.trial_ends_at::date, current_date);
+  if not (
+    v_sub.grace_until is not null
+    and v_sub.next_payment_at is not null
+    and current_date <= v_sub.grace_until::date
+  ) and v_start < current_date then
+    v_start := current_date;
+  end if;
+
+  v_end := public.jumaa_add_months(v_start, v_months);
+  v_after := v_credit - (v_months * v_rate);
+
+  update public.subscriptions
+  set status = case when v_start <= current_date then 'active' else status end,
+      subscription_starts_at = coalesce(subscription_starts_at, v_start::timestamptz),
+      subscription_ends_at = v_end::timestamptz,
+      next_payment_at = v_end::timestamptz,
+      billing_anchor_date = v_end,
+      credit_amount = v_after,
+      available_credit_amount = v_after,
+      outstanding_balance = greatest(v_rate - v_after, 0),
+      grace_until = null,
+      updated_at = now()
+  where id = v_sub.id;
+
+  return jsonb_build_object(
+    'success', true,
+    'months_applied', v_months,
+    'period_start', v_start,
+    'period_end', v_end,
+    'available_credit', v_after
+  );
+end;
+$apply_credit$;
+revoke all on function public.apply_jumaa_subscription_credit(uuid) from public, anon;
+grant execute on function public.apply_jumaa_subscription_credit(uuid) to authenticated, service_role;
+
 -- Atomic settlement: locks both rows, consumes current property credit first,
 -- extends only for fully funded months, and leaves every remainder as credit.
 create or replace function public.process_jumaa_subscription_payment(p_payment_id uuid)
