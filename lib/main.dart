@@ -19999,6 +19999,10 @@ class _TenantChatConversationScreenState
           )
           .single();
 
+      await NotificationService.instance.notifyMessageRecipient(
+        inserted['id']?.toString() ?? '',
+      );
+
       _messageController.clear();
       if (mounted && !_messages.any(
         (message) => message['id']?.toString() == inserted['id']?.toString(),
