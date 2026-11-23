@@ -537,6 +537,7 @@ create table if not exists public.subscription_reminder_events (
   in_app_sent_at timestamptz,
   push_sent_at timestamptz,
   email_sent_at timestamptz,
+  locked_at timestamptz,
   created_at timestamptz not null default now(),
   sent_at timestamptz,
   unique(subscription_id, due_date, days_before)
@@ -557,5 +558,37 @@ using (exists (
 ));
 revoke insert, update, delete on public.subscription_reminder_events from anon, authenticated;
 grant select on public.subscription_reminder_events to authenticated;
+
+
+-- Claim reminders atomically so overlapping scheduled invocations cannot
+-- send duplicate push/email messages. A crashed worker can be reclaimed
+-- after fifteen minutes.
+create or replace function public.claim_jumaa_subscription_reminder(p_event_id uuid)
+returns boolean
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $
+begin
+  if coalesce(current_setting('request.jwt.claim.role', true), '') <> 'service_role' then
+    raise exception 'This operation is restricted to the reminder service.';
+  end if;
+
+  update public.subscription_reminder_events
+  set status = 'processing',
+      locked_at = now(),
+      attempts = attempts + 1,
+      last_error = null
+  where id = p_event_id
+    and (
+      status in ('pending', 'failed')
+      or (status = 'processing' and locked_at < now() - interval '15 minutes')
+    );
+
+  return found;
+end;
+$;
+revoke all on function public.claim_jumaa_subscription_reminder(uuid) from public, anon, authenticated;
+grant execute on function public.claim_jumaa_subscription_reminder(uuid) to service_role;
 
 commit;
