@@ -320,6 +320,12 @@ begin
     where id = p_subscription_id;
   end if;
 
+  update public.subscription_reminder_events
+  set status = 'sent',
+      last_error = 'Cancelled because the administrator rescheduled the due date.'
+  where subscription_id = v_sub.id
+    and status in ('pending', 'failed');
+
   insert into public.subscription_reschedules (
     subscription_id, owner_id, property_id, mode,
     original_due_at, new_due_at, reason, admin_id
