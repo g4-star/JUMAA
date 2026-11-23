@@ -526,6 +526,9 @@ create table if not exists public.subscription_reminder_events (
   status text not null default 'pending' check (status in ('pending', 'processing', 'sent', 'failed')),
   attempts integer not null default 0,
   last_error text,
+  in_app_sent_at timestamptz,
+  push_sent_at timestamptz,
+  email_sent_at timestamptz,
   created_at timestamptz not null default now(),
   sent_at timestamptz,
   unique(subscription_id, due_date, days_before)
