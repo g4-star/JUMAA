@@ -108,7 +108,7 @@ Deno.serve(async (req: Request) => {
     // effective due date. A temporary grace period changes this deadline;
     // a shifted cycle changes next_payment_at itself.
     const subscriptionsResponse = await db(
-      "subscriptions?status=in.(trial,active,expired)&next_payment_at=not.is.null&select=id,owner_id,property_id,next_payment_at,grace_until",
+      "subscriptions?status=neq.cancelled&next_payment_at=not.is.null&select=id,owner_id,property_id,next_payment_at,grace_until",
     );
     if (!subscriptionsResponse.ok) throw new Error("Could not load subscriptions for reminder scheduling.");
     const subscriptions = await subscriptionsResponse.json();
