@@ -657,6 +657,7 @@ create table if not exists public.subscription_credit_adjustments (
   property_id uuid not null references public.properties(id) on delete restrict,
   legacy_credit_before numeric(12,2) not null,
   approved_amount numeric(12,2) not null check (approved_amount >= 0),
+  rejected_amount numeric(12,2) not null default 0 check (rejected_amount >= 0),
   available_credit_after numeric(12,2) not null,
   reason text not null check (length(trim(reason)) >= 5),
   admin_id uuid not null references public.profiles(id) on delete restrict,
@@ -728,7 +729,7 @@ begin
   update public.subscriptions
   set available_credit_amount = v_new_available,
       credit_amount = v_new_available,
-      legacy_credit_reviewed_amount = coalesce(legacy_credit_reviewed_amount, 0) + p_approved_amount,
+      legacy_credit_reviewed_amount = coalesce(legacy_credit_amount, 0),
       legacy_credit_reviewed_at = now(),
       legacy_credit_reviewed_by = v_admin,
       outstanding_balance = greatest(monthly_amount - v_new_available, 0),
@@ -737,10 +738,10 @@ begin
 
   insert into public.subscription_credit_adjustments (
     subscription_id, owner_id, property_id, legacy_credit_before,
-    approved_amount, available_credit_after, reason, admin_id
+    approved_amount, rejected_amount, available_credit_after, reason, admin_id
   ) values (
     v_sub.id, v_sub.owner_id, v_sub.property_id, v_pending,
-    p_approved_amount, v_new_available, trim(p_reason), v_admin
+    p_approved_amount, greatest(v_pending - p_approved_amount, 0), v_new_available, trim(p_reason), v_admin
   ) returning id into v_adjustment_id;
 
   insert into public.owner_notifications (
@@ -750,7 +751,7 @@ begin
     'JUMAA historical credit review completed',
     'JUMAA reviewed your historical subscription credit for this property. Approved credit: KES '
       || to_char(p_approved_amount, 'FM999,999,990.00')
-      || '. Remaining amount awaiting review: KES '
+      || '. Not approved: KES '
       || to_char(greatest(v_pending - p_approved_amount, 0), 'FM999,999,990.00') || '.',
     'subscription_credit_review',
     false
@@ -762,7 +763,8 @@ begin
     'notification_id', v_notification_id,
     'approved_amount', p_approved_amount,
     'available_credit_after', v_new_available,
-    'legacy_credit_remaining', greatest(v_pending - p_approved_amount, 0)
+    'legacy_credit_remaining', 0,
+    'rejected_amount', greatest(v_pending - p_approved_amount, 0)
   );
 end;
 $review_jumaa_legacy_subscription_credit$;
