@@ -144,7 +144,7 @@ Deno.serve(async (req: Request) => {
     }
 
     const eventsResponse = await db(
-      "subscription_reminder_events?status=in.(pending,failed)&select=*&order=created_at.asc&limit=100",
+      "subscription_reminder_events?status=in.(pending,failed,processing)&select=*&order=created_at.asc&limit=100",
     );
     if (!eventsResponse.ok) throw new Error("Could not load pending subscription reminders.");
     const events = await eventsResponse.json();
@@ -228,6 +228,9 @@ Deno.serve(async (req: Request) => {
         }
 
         if (!emailSentAt) {
+          if (profile.email && !BREVO_API_KEY) {
+            throw new Error("BREVO_API_KEY is required to deliver owner email reminders.");
+          }
           if (profile.email && BREVO_API_KEY) {
             const emailResponse = await fetch("https://api.brevo.com/v3/smtp/email", {
               method: "POST",
