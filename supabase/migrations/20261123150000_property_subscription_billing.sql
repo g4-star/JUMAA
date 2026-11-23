@@ -743,16 +743,26 @@ begin
     p_approved_amount, v_new_available, trim(p_reason), v_admin
   ) returning id into v_adjustment_id;
 
+  insert into public.owner_notifications (
+    owner_id, title, message, notification_type, is_read
+  ) values (
+    v_sub.owner_id,
+    'JUMAA historical credit review completed',
+    'JUMAA reviewed your historical subscription credit for this property. Approved credit: KES '
+      || to_char(p_approved_amount, 'FM999,999,990.00')
+      || '. Remaining amount awaiting review: KES '
+      || to_char(greatest(v_pending - p_approved_amount, 0), 'FM999,999,990.00') || '.',
+    'subscription_credit_review',
+    false
+  ) returning id into v_notification_id;
+
   return jsonb_build_object(
     'success', true,
     'adjustment_id', v_adjustment_id,
+    'notification_id', v_notification_id,
     'approved_amount', p_approved_amount,
     'available_credit_after', v_new_available,
     'legacy_credit_remaining', greatest(v_pending - p_approved_amount, 0)
   );
 end;
 $;
-revoke all on function public.review_jumaa_legacy_subscription_credit(uuid, numeric, text) from public, anon;
-grant execute on function public.review_jumaa_legacy_subscription_credit(uuid, numeric, text) to authenticated;
-
-commit;
