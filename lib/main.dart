@@ -17636,14 +17636,14 @@ class _PublicUserPageState extends State<PublicUserPage> {
                             context,
                             Icons.home_work_outlined,
                             compact
-                                ? '\${listing.vacantCount} vacant'
-                                : '\${listing.vacantCount} vacant \${listing.vacantCount == 1 ? 'unit' : 'units'}',
+                                ? '${listing.vacantCount} vacant'
+                                : '${listing.vacantCount} vacant ${listing.vacantCount == 1 ? 'unit' : 'units'}',
                             compact: compact,
                           ),
                           _propertyInfoChip(
                             context,
                             Icons.payments_outlined,
-                            'From KSh \${listing.lowestRent}',
+                            'From KSh ${listing.lowestRent}',
                             compact: compact,
                           ),
                         ],
@@ -17702,8 +17702,8 @@ class _PublicUserPageState extends State<PublicUserPage> {
                                     Flexible(
                                       child: Text(
                                         compact
-                                            ? '\${listing.likeCount}'
-                                            : '\${listing.likeCount} likes',
+                                            ? '${listing.likeCount}'
+                                            : '${listing.likeCount} likes',
                                         maxLines: 1,
                                         overflow: TextOverflow.ellipsis,
                                         style: TextStyle(
