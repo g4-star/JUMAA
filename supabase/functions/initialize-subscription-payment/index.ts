@@ -132,6 +132,36 @@ Deno.serve(async (req: Request) => {
     }
     subscription = refreshedSubscriptions[0];
 
+    const effectiveDueAt = [
+      subscription.next_payment_at,
+      subscription.trial_ends_at,
+      subscription.grace_until,
+    ]
+      .filter((value: unknown) => Boolean(value))
+      .map((value: string) => new Date(value))
+      .filter((value: Date) => !Number.isNaN(value.getTime()))
+      .sort((a: Date, b: Date) => b.getTime() - a.getTime())[0];
+
+    if (effectiveDueAt) {
+      const dateKey = (value: Date) => new Intl.DateTimeFormat("en-CA", {
+        timeZone: "Africa/Nairobi",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      }).format(value);
+      if (dateKey(effectiveDueAt) > dateKey(new Date())) {
+        return jsonResponse({
+          success: true,
+          payment_required: false,
+          message: "This property's next subscription payment is not due yet.",
+          next_payment_at: effectiveDueAt.toISOString(),
+          monthly_amount: monthlyRate,
+          available_credit: Number(subscription.available_credit_amount ?? 0),
+          amount_due: 0,
+        });
+      }
+    }
+
     const credit = Math.max(Number(subscription.available_credit_amount ?? 0), 0);
     const legacyCreditPending = Math.max(
       Number(subscription.legacy_credit_amount ?? 0) - Number(subscription.legacy_credit_reviewed_amount ?? 0),
