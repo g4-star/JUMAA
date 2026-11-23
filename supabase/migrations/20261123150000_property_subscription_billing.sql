@@ -321,7 +321,7 @@ begin
   end if;
 
   update public.subscription_reminder_events
-  set status = 'sent',
+  set status = 'cancelled',
       last_error = 'Cancelled because the administrator rescheduled the due date.'
   where subscription_id = v_sub.id
     and status in ('pending', 'failed');
@@ -529,7 +529,7 @@ create table if not exists public.subscription_reminder_events (
   property_id uuid not null references public.properties(id) on delete restrict,
   due_date date not null,
   days_before integer not null check (days_before in (7, 3, 1, 0)),
-  status text not null default 'pending' check (status in ('pending', 'processing', 'sent', 'failed')),
+  status text not null default 'pending' check (status in ('pending', 'processing', 'sent', 'failed', 'cancelled')),
   attempts integer not null default 0,
   last_error text,
   in_app_sent_at timestamptz,
