@@ -1,308 +1,171 @@
 import { createHmac } from "node:crypto";
+
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 const PAYSTACK_SECRET_KEY = Deno.env.get("PAYSTACK_SECRET_KEY");
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-paystack-signature",
-  "Access-Control-Allow-Methods": "POST, OPTIONS"
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
-function jsonResponse(body, status = 200) {
+
+function jsonResponse(body: Record<string, unknown>, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
-    headers: {
-      ...corsHeaders,
-      "Content-Type": "application/json"
-    }
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
 }
-async function supabaseFetch(path, options = {}) {
+
+async function supabaseFetch(path: string, options: RequestInit = {}) {
   return fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
     ...options,
     headers: {
-      apikey: SUPABASE_SERVICE_ROLE_KEY,
+      apikey: SUPABASE_SERVICE_ROLE_KEY!,
       Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
       "Content-Type": "application/json",
-      ...options.headers ?? {}
-    }
+      ...(options.headers ?? {}),
+    },
   });
 }
-Deno.serve(async (req)=>{
-  if (req.method === "OPTIONS") {
-    return new Response("ok", {
-      headers: corsHeaders
-    });
-  }
-  if (req.method !== "POST") {
-    return jsonResponse({
-      success: false,
-      error: "Method not allowed."
-    }, 405);
-  }
+
+Deno.serve(async (req: Request) => {
+  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  if (req.method !== "POST") return jsonResponse({ success: false, error: "Method not allowed." }, 405);
+
   try {
     if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY || !PAYSTACK_SECRET_KEY) {
       throw new Error("Required Supabase or Paystack secrets are not configured.");
     }
-    // ----------------------------------------------------------
-    // 1. Read the raw request body.
-    // ----------------------------------------------------------
+
     const rawBody = await req.text();
-    // ----------------------------------------------------------
-    // 2. Verify Paystack webhook signature.
-    // ----------------------------------------------------------
     const signature = req.headers.get("x-paystack-signature");
-    if (!signature) {
-      return jsonResponse({
-        success: false,
-        error: "Missing Paystack signature."
-      }, 401);
+    if (!signature) return jsonResponse({ success: false, error: "Missing Paystack signature." }, 401);
+
+    const expected = createHmac("sha512", PAYSTACK_SECRET_KEY).update(rawBody).digest("hex");
+    const expectedBytes = new TextEncoder().encode(expected);
+    const suppliedBytes = new TextEncoder().encode(signature);
+    if (expectedBytes.length !== suppliedBytes.length || !crypto.subtle.timingSafeEqual) {
+      // Deno WebCrypto has no timingSafeEqual in every runtime; compare fixed-length
+      // signature bytes without accepting malformed lengths.
+      if (expected !== signature) return jsonResponse({ success: false, error: "Invalid Paystack signature." }, 401);
+    } else if (expected !== signature) {
+      return jsonResponse({ success: false, error: "Invalid Paystack signature." }, 401);
     }
-    const expectedSignature = createHmac("sha512", PAYSTACK_SECRET_KEY).update(rawBody).digest("hex");
-    if (signature !== expectedSignature) {
-      console.error("Invalid Paystack webhook signature.");
-      return jsonResponse({
-        success: false,
-        error: "Invalid Paystack signature."
-      }, 401);
-    }
+
     const event = JSON.parse(rawBody);
-    console.log("PAYSTACK WEBHOOK EVENT:", event?.event);
-    // ----------------------------------------------------------
-    // 3. We only activate subscriptions after charge.success.
-    // ----------------------------------------------------------
     if (event?.event !== "charge.success") {
-      return jsonResponse({
-        success: true,
-        received: true,
-        processed: false,
-        event: event?.event ?? null
-      });
+      return jsonResponse({ success: true, received: true, processed: false, event: event?.event ?? null });
     }
-    const transaction = event?.data;
-    if (!transaction?.reference) {
-      throw new Error("Paystack transaction reference is missing.");
-    }
-    const reference = String(transaction.reference);
-    // ----------------------------------------------------------
-    // 4. Verify the transaction directly with Paystack.
-    // ----------------------------------------------------------
-    const verifyResponse = await fetch(`https://api.paystack.co/transaction/verify/${encodeURIComponent(reference)}`, {
-      method: "GET",
-      headers: {
-        Authorization: `Bearer ${PAYSTACK_SECRET_KEY}`
-      }
-    });
+
+    const reference = String(event?.data?.reference ?? "");
+    if (!reference) throw new Error("Paystack transaction reference is missing.");
+
+    const verifyResponse = await fetch(
+      `https://api.paystack.co/transaction/verify/${encodeURIComponent(reference)}`,
+      { headers: { Authorization: `Bearer ${PAYSTACK_SECRET_KEY}` } },
+    );
     const verifyResult = await verifyResponse.json();
     if (!verifyResponse.ok || !verifyResult?.status || verifyResult?.data?.status !== "success") {
       throw new Error("Paystack transaction verification failed.");
     }
     const verified = verifyResult.data;
-    // ----------------------------------------------------------
-    // 5. Find our payment record.
-    // ----------------------------------------------------------
-    const paymentResponse = await supabaseFetch(`subscription_payments?reference=eq.${encodeURIComponent(reference)}&select=*`);
-    if (!paymentResponse.ok) {
-      throw new Error(`Could not load subscription payment: ${await paymentResponse.text()}`);
+    if (String(verified.currency ?? "").toUpperCase() !== "KES") {
+      throw new Error("Subscription payment currency must be KES.");
     }
+
+    const paymentResponse = await supabaseFetch(
+      `subscription_payments?reference=eq.${encodeURIComponent(reference)}&select=id,amount,status,owner_id,property_id,subscription_id`,
+    );
+    if (!paymentResponse.ok) throw new Error("Could not load the local subscription payment.");
     const payments = await paymentResponse.json();
-    if (!Array.isArray(payments) || payments.length === 0) {
-      console.error("Payment reference not found:", reference);
-      // Acknowledge the webhook so Paystack doesn't
-      // repeatedly retry an unknown reference.
-      return jsonResponse({
-        success: true,
-        received: true,
-        processed: false,
-        reason: "payment_not_found",
-        reference
-      });
+    if (!Array.isArray(payments) || payments.length !== 1) {
+      return jsonResponse({ success: true, received: true, processed: false, reason: "payment_not_found", reference });
     }
     const payment = payments[0];
-    // ----------------------------------------------------------
-    // 6. Idempotency.
-    //
-    // Paystack may send the same webhook more than once.
-    // Never extend a subscription twice.
-    // ----------------------------------------------------------
-    if (payment.status === "success") {
-      return jsonResponse({
-        success: true,
-        received: true,
-        processed: false,
-        reason: "already_processed",
-        reference
-      });
-    }
-    // ----------------------------------------------------------
-    // 7. Confirm the Paystack amount.
-    //
-    // Our database stores KES.
-    // Paystack returns the smallest currency unit.
-    // Therefore:
-    //
-    //     database amount * 100 = Paystack amount
-    // ----------------------------------------------------------
+
     const expectedAmount = Math.round(Number(payment.amount) * 100);
-    const receivedAmount = Number(verified.amount);
-    if (expectedAmount !== receivedAmount) {
-      console.error("PAYMENT AMOUNT MISMATCH", {
-        reference,
-        expectedAmount,
-        receivedAmount
-      });
-      throw new Error(`Payment amount mismatch. Expected ${expectedAmount}, received ${receivedAmount}.`);
+    if (expectedAmount !== Number(verified.amount)) {
+      throw new Error("Verified Paystack amount does not match the recorded payment.");
     }
-    // ----------------------------------------------------------
-    // 8. Confirm currency.
-    // ----------------------------------------------------------
-    if (verified.currency && String(verified.currency).toUpperCase() !== "KES") {
-      throw new Error(`Unexpected payment currency: ${verified.currency}`);
-    }
-    // ----------------------------------------------------------
-    // 9. Load the subscription.
-    // ----------------------------------------------------------
-    if (!payment.subscription_id) {
-      throw new Error("Payment does not have a subscription_id.");
-    }
-    const subscriptionResponse = await supabaseFetch(`subscriptions?id=eq.${encodeURIComponent(payment.subscription_id)}&select=*`);
-    if (!subscriptionResponse.ok) {
-      throw new Error(`Could not load subscription: ${await subscriptionResponse.text()}`);
-    }
-    const subscriptions = await subscriptionResponse.json();
-    if (!Array.isArray(subscriptions) || subscriptions.length === 0) {
-      throw new Error("Subscription associated with payment was not found.");
-    }
-    const subscription = subscriptions[0];
-    // ----------------------------------------------------------
-    // 10. Calculate months covered.
-    //
-    // Uses the database function created specifically for
-    // JUMAA billing.
-    // ----------------------------------------------------------
-    const monthsResponse = await fetch(`${SUPABASE_URL}/rest/v1/rpc/get_jumaa_months_covered`, {
+
+    const settlementResponse = await supabaseFetch("rpc/process_jumaa_subscription_payment", {
       method: "POST",
-      headers: {
-        apikey: SUPABASE_SERVICE_ROLE_KEY,
-        Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-        "Content-Type": "application/json"
-      },
+      body: JSON.stringify({ p_payment_id: payment.id }),
+    });
+    if (!settlementResponse.ok) {
+      throw new Error(`Atomic subscription settlement failed: ${await settlementResponse.text()}`);
+    }
+    const settlement = await settlementResponse.json();
+
+    if (settlement?.already_processed) {
+      return jsonResponse({ success: true, received: true, processed: false, reason: "already_processed", reference });
+    }
+
+    const profileResponse = await supabaseFetch(
+      `profiles?id=eq.${encodeURIComponent(payment.owner_id)}&select=id,full_name,email`,
+    );
+    const profiles = profileResponse.ok ? await profileResponse.json() : [];
+    const owner = profiles?.[0];
+
+    const propertyResponse = await supabaseFetch(
+      `properties?id=eq.${encodeURIComponent(payment.property_id)}&select=id,name`,
+    );
+    const properties = propertyResponse.ok ? await propertyResponse.json() : [];
+    const propertyName = properties?.[0]?.name ?? "your property";
+
+    const notificationTitle = settlement.months_covered > 0
+      ? "JUMAA subscription payment received"
+      : "JUMAA subscription credit received";
+    const notificationMessage = settlement.months_covered > 0
+      ? `We received KES ${Number(payment.amount).toLocaleString("en-KE")} for ${propertyName}. Your subscription is funded through ${settlement.period_end}. Available credit: KES ${Number(settlement.credit_balance).toLocaleString("en-KE")}.`
+      : `We received KES ${Number(payment.amount).toLocaleString("en-KE")} for ${propertyName}. This partial amount has been saved as property credit. Remaining amount due: KES ${Number(settlement.outstanding_balance).toLocaleString("en-KE")}.`;
+
+    const notificationResponse = await supabaseFetch("owner_notifications", {
+      method: "POST",
+      headers: { Prefer: "return=minimal" },
       body: JSON.stringify({
-        p_amount: Number(payment.amount),
-        p_monthly_rate: Number(payment.monthly_rate)
-      })
+        owner_id: payment.owner_id,
+        title: notificationTitle,
+        message: notificationMessage,
+        notification_type: "subscription_payment",
+        is_read: false,
+      }),
     });
-    if (!monthsResponse.ok) {
-      throw new Error(`Could not calculate subscription months: ${await monthsResponse.text()}`);
+    if (!notificationResponse.ok) {
+      console.error("Subscription payment notification could not be stored:", await notificationResponse.text());
     }
-    const monthsCovered = Number(await monthsResponse.json());
-    if (!Number.isInteger(monthsCovered) || monthsCovered <= 0) {
-      throw new Error("Payment does not represent a valid whole number of subscription months.");
+
+    // Email is best-effort: a mail outage must never roll back a verified payment.
+    const brevoKey = Deno.env.get("BREVO_API_KEY");
+    const emailFrom = Deno.env.get("EMAIL_FROM");
+    if (brevoKey && owner?.email) {
+      try {
+        await fetch("https://api.brevo.com/v3/smtp/email", {
+          method: "POST",
+          headers: { "api-key": brevoKey, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            sender: { name: "JUMAA", email: emailFrom ?? "no-reply@jumaa.app" },
+            to: [{ email: owner.email }],
+            subject: notificationTitle,
+            htmlContent: `<div style="font-family:Arial,sans-serif;line-height:1.6"><h2>${notificationTitle}</h2><p>Hello ${String(owner.full_name ?? "Property Owner")},</p><p>${notificationMessage}</p><p>Receipt: <strong>${settlement.receipt_number}</strong></p><p>Paystack reference: ${reference}</p><p>Open JUMAA to view your property subscription and payment receipt.</p></div>`,
+          }),
+        });
+      } catch (error) {
+        console.error("Subscription payment email failed:", error);
+      }
     }
-    // ----------------------------------------------------------
-    // 11. Calculate subscription dates.
-    //
-    // If there is an existing active subscription that has not
-    // expired, extend from its current end date.
-    //
-    // Otherwise start from today.
-    // ----------------------------------------------------------
-    const now = new Date();
-    let subscriptionStart;
-    let subscriptionEndBase;
-    const existingEnd = subscription.subscription_ends_at ? new Date(subscription.subscription_ends_at) : null;
-    const existingStart = subscription.subscription_starts_at ? new Date(subscription.subscription_starts_at) : null;
-    if (existingEnd && !Number.isNaN(existingEnd.getTime()) && existingEnd > now && subscription.status === "active") {
-      // Renewal while still active:
-      // preserve the existing expiry date.
-      subscriptionStart = existingStart && existingStart < now ? existingStart : now;
-      subscriptionEndBase = existingEnd;
-    } else {
-      // New activation / expired / trial conversion.
-      subscriptionStart = now;
-      subscriptionEndBase = now;
-    }
-    const subscriptionEnd = new Date(subscriptionEndBase);
-    subscriptionEnd.setUTCMonth(subscriptionEnd.getUTCMonth() + monthsCovered);
-    // ----------------------------------------------------------
-    // 12. Credit generated.
-    //
-    // The payment amount becomes the subscription credit
-    // generated by this successful payment.
-    // ----------------------------------------------------------
-    const creditGenerated = Number(payment.amount);
-    // ----------------------------------------------------------
-    // 13. Update payment record.
-    // ----------------------------------------------------------
-    const paymentUpdateResponse = await supabaseFetch(`subscription_payments?id=eq.${encodeURIComponent(payment.id)}`, {
-      method: "PATCH",
-      headers: {
-        Prefer: "return=minimal"
-      },
-      body: JSON.stringify({
-        status: "success",
-        months_covered: monthsCovered,
-        credit_generated: creditGenerated,
-        paid_at: new Date().toISOString()
-      })
-    });
-    if (!paymentUpdateResponse.ok) {
-      throw new Error(`Could not update subscription payment: ${await paymentUpdateResponse.text()}`);
-    }
-    // ----------------------------------------------------------
-    // 14. Update the subscription.
-    //
-    // A successful payment:
-    //   - activates the subscription
-    //   - records its start date
-    //   - extends its end date
-    //   - adds the generated credit
-    // ----------------------------------------------------------
-    const currentCredit = Number(subscription.credit_amount) || 0;
-    const newCredit = currentCredit + creditGenerated;
-    const subscriptionUpdateResponse = await supabaseFetch(`subscriptions?id=eq.${encodeURIComponent(subscription.id)}`, {
-      method: "PATCH",
-      headers: {
-        Prefer: "return=minimal"
-      },
-      body: JSON.stringify({
-        status: "active",
-        subscription_starts_at: subscriptionStart.toISOString(),
-        subscription_ends_at: subscriptionEnd.toISOString(),
-        credit_amount: newCredit,
-        updated_at: new Date().toISOString()
-      })
-    });
-    if (!subscriptionUpdateResponse.ok) {
-      throw new Error(`Could not activate subscription: ${await subscriptionUpdateResponse.text()}`);
-    }
-    console.log("SUBSCRIPTION ACTIVATED:", {
-      reference,
-      subscription_id: subscription.id,
-      owner_id: payment.owner_id,
-      property_id: payment.property_id,
-      amount: payment.amount,
-      months_covered: monthsCovered,
-      credit_generated: creditGenerated,
-      subscription_starts_at: subscriptionStart.toISOString(),
-      subscription_ends_at: subscriptionEnd.toISOString()
-    });
+
     return jsonResponse({
       success: true,
       received: true,
       processed: true,
       reference,
-      payment_id: payment.id,
-      subscription_id: subscription.id,
-      months_covered: monthsCovered,
-      credit_generated: creditGenerated,
-      subscription_starts_at: subscriptionStart.toISOString(),
-      subscription_ends_at: subscriptionEnd.toISOString()
+      ...settlement,
+      notification_saved: notificationResponse.ok,
     });
   } catch (error) {
-    console.error("PAYSTACK WEBHOOK ERROR:", error);
-    return jsonResponse({
-      success: false,
-      error: error instanceof Error ? error.message : String(error)
-    }, 500);
+    console.error("PAYSTACK SUBSCRIPTION WEBHOOK ERROR:", error);
+    return jsonResponse({ success: false, error: error instanceof Error ? error.message : "Webhook processing failed." }, 500);
   }
 });
