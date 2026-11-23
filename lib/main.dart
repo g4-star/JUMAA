@@ -433,7 +433,7 @@ class _ApartmentAppState extends State<ApartmentApp> {
                             children: [
                               Icon(
                                 Icons.wifi_off_rounded,
-                                color: Colors.white,
+                                color: Theme.of(context).colorScheme.surface,
                                 size: 18,
                               ),
                               SizedBox(width: 8),
@@ -8914,7 +8914,7 @@ class _TenantDashboardPageState extends State<TenantDashboardPage> {
                           width: 54,
                           height: 54,
                           decoration: BoxDecoration(
-                            color: const Color(0xFFE8F3EE),
+                            color: Theme.of(context).colorScheme.surfaceContainerHighest,
                             borderRadius: BorderRadius.circular(16),
                           ),
                           child: const Icon(
@@ -9063,7 +9063,7 @@ class _TenantDashboardPageState extends State<TenantDashboardPage> {
                         width: 48,
                         height: 48,
                         decoration: BoxDecoration(
-                          color: const Color(0xFFE8F3EE),
+                          color: Theme.of(context).colorScheme.surfaceContainerHighest,
                           borderRadius: BorderRadius.circular(14),
                         ),
                         child: const Icon(
@@ -16102,7 +16102,7 @@ class _PublicPropertyRoutePageState extends State<PublicPropertyRoutePage> {
                             const SizedBox(height: 4),
                             Text(
                               property.address,
-                              style: const TextStyle(color: Colors.black54),
+                              style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
                             ),
                           ],
                         ],
@@ -16554,9 +16554,11 @@ class _PublicUserPageState extends State<PublicUserPage> {
 
             return Container(
               height: MediaQuery.of(context).size.height * 0.82,
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surface,
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(28),
+                ),
               ),
               child: SafeArea(
                 child: Column(
@@ -16569,23 +16571,20 @@ class _PublicUserPageState extends State<PublicUserPage> {
                             width: 44,
                             height: 44,
                             decoration: BoxDecoration(
-                              color: const Color(0xFF0B3D2E)
-                                  .withValues(alpha: 0.10),
+                              color: Theme.of(context).colorScheme.primaryContainer,
                               borderRadius: BorderRadius.circular(14),
                             ),
-                            child: const Icon(
+                            child: Icon(
                               Icons.tune_rounded,
-                              color: Color(0xFF0B3D2E),
+                              color: Theme.of(context).colorScheme.primary,
                             ),
                           ),
                           const SizedBox(width: 12),
-                          const Expanded(
+                          Expanded(
                             child: Text(
                               'Filter Apartments',
-                              style: TextStyle(
-                                fontSize: 22,
-                                fontWeight: FontWeight.w800,
-                              ),
+                              style: Theme.of(context).textTheme.titleLarge
+                                  ?.copyWith(fontWeight: FontWeight.w800),
                             ),
                           ),
                           IconButton(
@@ -16602,12 +16601,11 @@ class _PublicUserPageState extends State<PublicUserPage> {
                       child: ListView(
                         padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
                         children: [
-                          const Text(
+                          Text(
                             'LOCATION',
-                            style: TextStyle(
-                              fontSize: 12,
+                            style: Theme.of(context).textTheme.labelLarge?.copyWith(
                               fontWeight: FontWeight.w800,
-                              color: Colors.black54,
+                              color: Theme.of(context).colorScheme.onSurfaceVariant,
                               letterSpacing: 1,
                             ),
                           ),
@@ -16677,12 +16675,11 @@ class _PublicUserPageState extends State<PublicUserPage> {
 
                           const SizedBox(height: 24),
 
-                          const Text(
+                          Text(
                             'APARTMENT',
-                            style: TextStyle(
-                              fontSize: 12,
+                            style: Theme.of(context).textTheme.labelLarge?.copyWith(
                               fontWeight: FontWeight.w800,
-                              color: Colors.black54,
+                              color: Theme.of(context).colorScheme.onSurfaceVariant,
                               letterSpacing: 1,
                             ),
                           ),
@@ -16753,12 +16750,11 @@ class _PublicUserPageState extends State<PublicUserPage> {
 
                           const SizedBox(height: 24),
 
-                          const Text(
+                          Text(
                             'SORT & PROMOTION',
-                            style: TextStyle(
-                              fontSize: 12,
+                            style: Theme.of(context).textTheme.labelLarge?.copyWith(
                               fontWeight: FontWeight.w800,
-                              color: Colors.black54,
+                              color: Theme.of(context).colorScheme.onSurfaceVariant,
                               letterSpacing: 1,
                             ),
                           ),
@@ -16887,7 +16883,7 @@ class _PublicUserPageState extends State<PublicUserPage> {
                                 });
                               },
                               style: FilledButton.styleFrom(
-                                backgroundColor: const Color(0xFF0B3D2E),
+                                backgroundColor: Theme.of(context).colorScheme.primary,
                                 foregroundColor: Colors.white,
                                 padding: const EdgeInsets.symmetric(
                                   vertical: 16,
@@ -17089,20 +17085,23 @@ class _PublicUserPageState extends State<PublicUserPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
+            Text(
               'Find your next home',
-              style: TextStyle(
+              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                 fontSize: 28,
                 fontWeight: FontWeight.w800,
-                color: Color(0xFF0B3D2E),
+                color: Theme.of(context).colorScheme.onSurface,
               ),
             ),
 
             const SizedBox(height: 8),
 
-            const Text(
+            Text(
               'Search apartments and connect with landlords.',
-              style: TextStyle(color: Colors.black54, height: 1.4),
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                height: 1.4,
+              ),
             ),
 
             const SizedBox(height: 24),
@@ -17121,7 +17120,7 @@ class _PublicUserPageState extends State<PublicUserPage> {
                       )
                     : null,
                 filled: true,
-                fillColor: Colors.white,
+                fillColor: Theme.of(context).colorScheme.surfaceContainerHighest,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(18),
                   borderSide: BorderSide.none,
@@ -17228,7 +17227,7 @@ class _PublicUserPageState extends State<PublicUserPage> {
                                             ? Colors.white.withValues(
                                                 alpha: 0.82,
                                               )
-                                            : Colors.black54,
+                                            : Colors.white.withValues(alpha: 0.88),
                                       ),
                                     ),
                                   ],
@@ -17289,7 +17288,10 @@ class _PublicUserPageState extends State<PublicUserPage> {
 
             Text(
               '${properties.length} propert${properties.length == 1 ? 'y' : 'ies'} found',
-              style: const TextStyle(fontWeight: FontWeight.w600),
+              style: TextStyle(
+                fontWeight: FontWeight.w600,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
             ),
 
             const SizedBox(height: 12),
@@ -17325,7 +17327,9 @@ class _PublicUserPageState extends State<PublicUserPage> {
                             Text(
                               _loadError!,
                               textAlign: TextAlign.center,
-                              style: const TextStyle(color: Colors.black54),
+                              style: TextStyle(
+                              color: Theme.of(context).colorScheme.onSurfaceVariant,
+                            ),
                             ),
                             const SizedBox(height: 16),
                             ElevatedButton.icon(
@@ -17333,7 +17337,7 @@ class _PublicUserPageState extends State<PublicUserPage> {
                               icon: const Icon(Icons.refresh),
                               label: const Text('Retry'),
                               style: ElevatedButton.styleFrom(
-                                backgroundColor: const Color(0xFF0B3D2E),
+                                backgroundColor: Theme.of(context).colorScheme.primary,
                                 foregroundColor: Colors.white,
                               ),
                             ),
@@ -17352,25 +17356,51 @@ class _PublicUserPageState extends State<PublicUserPage> {
                             color: Colors.grey.shade400,
                           ),
                           const SizedBox(height: 15),
-                          const Text(
+                          Text(
                             'No apartments found',
-                            style: TextStyle(
-                              fontSize: 18,
+                            style: Theme.of(context).textTheme.titleMedium?.copyWith(
                               fontWeight: FontWeight.bold,
+                              color: Theme.of(context).colorScheme.onSurface,
                             ),
                           ),
                           const SizedBox(height: 6),
-                          const Text(
+                          Text(
                             'Try another search.',
-                            style: TextStyle(color: Colors.black54),
+                            style: TextStyle(
+                              color: Theme.of(context).colorScheme.onSurfaceVariant,
+                            ),
                           ),
                         ],
                       ),
                     )
-                  : ListView.builder(
-                      itemCount: properties.length,
-                      itemBuilder: (context, index) {
-                        return _propertyCard(properties[index]);
+                  : LayoutBuilder(
+                      builder: (context, constraints) {
+                        final columns = constraints.maxWidth >= 680 ? 3 : 2;
+                        final itemWidth =
+                            (constraints.maxWidth - (columns - 1) * 12) /
+                                columns;
+                        final aspectRatio = itemWidth < 150
+                            ? 0.37
+                            : itemWidth < 190
+                                ? 0.51
+                                : itemWidth < 230
+                                    ? 0.58
+                                    : 0.70;
+
+                        return GridView.builder(
+                          padding: const EdgeInsets.only(bottom: 16),
+                          itemCount: properties.length,
+                          gridDelegate:
+                              SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: columns,
+                            crossAxisSpacing: 12,
+                            mainAxisSpacing: 12,
+                            childAspectRatio: aspectRatio,
+                          ),
+                          itemBuilder: (context, index) {
+                            return _propertyCard(properties[index]);
+                          },
+                        );
                       },
                     ),
             ),
@@ -17492,275 +17522,308 @@ class _PublicUserPageState extends State<PublicUserPage> {
 
   Widget _propertyCard(_PublicPropertyListing listing) {
     final property = listing.property;
-
     final images = <String>[
       ...property.imagePaths,
       ...listing.vacantUnits.expand((unit) => unit.imagePaths),
     ].where((image) => image.trim().isNotEmpty).toSet().toList();
 
-    return Card(
-      margin: const EdgeInsets.only(bottom: 16),
-      elevation: 2,
-      clipBehavior: Clip.antiAlias,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (images.isNotEmpty)
-            _PropertyImageCarousel(
-              images: images,
-              placeholder: Container(
-                height: 190,
-                width: double.infinity,
-                color: const Color(0xFFE8F3EE),
-                child: const Icon(
-                  Icons.apartment,
-                  size: 60,
-                  color: Color(0xFF0B3D2E),
-                ),
-              ),
-            )
-          else
-            Container(
-              height: 190,
-              width: double.infinity,
-              color: const Color(0xFFE8F3EE),
-              child: const Icon(
-                Icons.apartment,
-                size: 60,
-                color: Color(0xFF0B3D2E),
-              ),
-            ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.maxWidth < 220;
+        final imageHeight = compact ? 112.0 : 145.0;
+        final colors = Theme.of(context).colorScheme;
 
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: Text(
-                        property.name,
-                        style: const TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
+        return Card(
+          margin: EdgeInsets.zero,
+          elevation: 1,
+          clipBehavior: Clip.antiAlias,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(compact ? 14 : 18),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(
+                height: imageHeight,
+                width: double.infinity,
+                child: images.isNotEmpty
+                    ? _PropertyImageCarousel(
+                        images: images,
+                        placeholder: Container(
+                          color: colors.surfaceContainerHighest,
+                          child: Icon(
+                            Icons.apartment,
+                            size: compact ? 38 : 52,
+                            color: colors.primary,
+                          ),
+                        ),
+                      )
+                    : Container(
+                        color: colors.surfaceContainerHighest,
+                        child: Icon(
+                          Icons.apartment,
+                          size: compact ? 38 : 52,
+                          color: colors.primary,
                         ),
                       ),
-                    ),
-
-                    if (listing.isBoosted)
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 9,
-                          vertical: 5,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.orange.shade100,
-                          borderRadius: BorderRadius.circular(9),
-                        ),
-                        child: const Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
+              ),
+              Expanded(
+                child: Padding(
+                  padding: EdgeInsets.all(compact ? 9 : 12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: Text(
+                              property.name,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: compact ? 14 : 17,
+                                height: 1.15,
+                                fontWeight: FontWeight.bold,
+                                color: colors.onSurface,
+                              ),
+                            ),
+                          ),
+                          if (listing.isBoosted) ...[
+                            const SizedBox(width: 3),
                             Icon(
-                              Icons.local_fire_department,
-                              size: 14,
+                              Icons.local_fire_department_rounded,
+                              size: compact ? 17 : 20,
                               color: Colors.deepOrange,
                             ),
-                            SizedBox(width: 3),
-                            Text(
-                              'BOOSTED',
+                          ],
+                        ],
+                      ),
+                      SizedBox(height: compact ? 5 : 8),
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(
+                            Icons.location_on_outlined,
+                            size: compact ? 13 : 16,
+                            color: colors.onSurfaceVariant,
+                          ),
+                          const SizedBox(width: 3),
+                          Expanded(
+                            child: Text(
+                              property.location.isNotEmpty
+                                  ? property.location
+                                  : property.address.isNotEmpty
+                                      ? property.address
+                                      : 'Location not provided',
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
                               style: TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.deepOrange,
+                                fontSize: compact ? 10 : 12,
+                                height: 1.15,
+                                color: colors.onSurfaceVariant,
                               ),
                             ),
-                          ],
-                        ),
+                          ),
+                        ],
                       ),
-                  ],
-                ),
-
-                const SizedBox(height: 8),
-
-                Row(
-                  children: [
-                    const Icon(
-                      Icons.location_on_outlined,
-                      size: 18,
-                      color: Colors.grey,
-                    ),
-                    const SizedBox(width: 5),
-                    Expanded(
-                      child: Text(
-                        property.location.isNotEmpty
-                            ? property.location
-                            : property.address.isNotEmpty
-                            ? property.address
-                            : 'Location not provided',
-                        style: const TextStyle(color: Colors.black54),
+                      SizedBox(height: compact ? 6 : 10),
+                      Wrap(
+                        spacing: 5,
+                        runSpacing: 5,
+                        children: [
+                          _propertyInfoChip(
+                            context,
+                            Icons.home_work_outlined,
+                            compact
+                                ? '${listing.vacantCount} vacant'
+                                : '${listing.vacantCount} vacant ${listing.vacantCount == 1 ? 'unit' : 'units'}',
+                            compact: compact,
+                          ),
+                          _propertyInfoChip(
+                            context,
+                            Icons.payments_outlined,
+                            'From KSh ${listing.lowestRent}',
+                            compact: compact,
+                          ),
+                        ],
                       ),
-                    ),
-                  ],
-                ),
-
-                const SizedBox(height: 12),
-
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    _propertyInfoChip(
-                      Icons.home_work_outlined,
-                      '${listing.vacantCount} vacant '
-                      '${listing.vacantCount == 1 ? 'unit' : 'units'}',
-                    ),
-                    _propertyInfoChip(
-                      Icons.payments_outlined,
-                      'From KSh ${listing.lowestRent}',
-                    ),
-                  ],
-                ),
-
-                if (listing.unitTypes.isNotEmpty) ...[
-                  const SizedBox(height: 10),
-                  Text(
-                    listing.unitTypes.join(' • '),
-                    style: const TextStyle(color: Colors.black54, fontSize: 13),
-                  ),
-                ],
-
-                if (property.description.trim().isNotEmpty) ...[
-                  const SizedBox(height: 10),
-                  Text(
-                    property.description,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(color: Colors.black54, height: 1.35),
-                  ),
-                ],
-
-                const SizedBox(height: 14),
-
-                Row(
-                  children: [
-                    InkWell(
-                      onTap: listing.vacantUnits.isEmpty
-                          ? null
-                          : () =>
-                                _togglePropertyLike(listing.vacantUnits.first),
-                      borderRadius: BorderRadius.circular(22),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 8,
-                        ),
-                        decoration: BoxDecoration(
-                          color: listing.isLiked
-                              ? Colors.red.withValues(alpha: 0.10)
-                              : Colors.grey.withValues(alpha: 0.08),
-                          borderRadius: BorderRadius.circular(22),
-                          border: Border.all(
-                            color: listing.isLiked
-                                ? Colors.red.withValues(alpha: 0.35)
-                                : Colors.grey.withValues(alpha: 0.25),
+                      if (!compact && listing.unitTypes.isNotEmpty) ...[
+                        const SizedBox(height: 7),
+                        Text(
+                          listing.unitTypes.join(' • '),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: colors.onSurfaceVariant,
+                            fontSize: 11,
                           ),
                         ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              listing.isLiked
-                                  ? Icons.favorite
-                                  : Icons.favorite_border,
-                              size: 21,
-                              color: listing.isLiked
-                                  ? Colors.red
-                                  : Colors.grey.shade700,
-                            ),
-                            const SizedBox(width: 7),
-                            Text(
-                              '${listing.likeCount} '
-                              '${listing.likeCount == 1 ? 'like' : 'likes'}',
-                              style: TextStyle(
-                                fontWeight: FontWeight.w700,
-                                color: listing.isLiked
-                                    ? Colors.red
-                                    : Colors.grey.shade800,
+                      ],
+                      if (!compact && property.description.trim().isNotEmpty) ...[
+                        const SizedBox(height: 6),
+                        Text(
+                          property.description,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: colors.onSurfaceVariant,
+                            fontSize: 11,
+                            height: 1.25,
+                          ),
+                        ),
+                      ],
+                      const Spacer(),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: InkWell(
+                              onTap: listing.vacantUnits.isEmpty
+                                  ? null
+                                  : () => _togglePropertyLike(
+                                        listing.vacantUnits.first,
+                                      ),
+                              borderRadius: BorderRadius.circular(18),
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(vertical: 4),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      listing.isLiked
+                                          ? Icons.favorite
+                                          : Icons.favorite_border,
+                                      size: compact ? 17 : 19,
+                                      color: listing.isLiked
+                                          ? Colors.red
+                                          : colors.onSurfaceVariant,
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Flexible(
+                                      child: Text(
+                                        compact
+                                            ? '${listing.likeCount}'
+                                            : '${listing.likeCount} likes',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          fontSize: compact ? 10 : 12,
+                                          fontWeight: FontWeight.w700,
+                                          color: colors.onSurface,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ),
                             ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    const Spacer(),
-                    OutlinedButton.icon(
-                      onPressed: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) =>
-                                PublicPropertyRoutePage(property: property),
                           ),
-                        );
-                      },
-                      icon: const Icon(Icons.location_on_outlined),
-                      label: const Text('Location'),
-                    ),
-                  ],
-                ),
-
-                const SizedBox(height: 10),
-
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
-                    onPressed: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) =>
-                              PublicPropertyDetailsPage(property: property),
-                        ),
-                      );
-                    },
-                    icon: const Icon(Icons.visibility_outlined),
-                    label: const Text('VIEW APARTMENT'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF0B3D2E),
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 13),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
+                          IconButton(
+                            tooltip: 'View location',
+                            visualDensity: VisualDensity.compact,
+                            constraints: const BoxConstraints.tightFor(
+                              width: 32,
+                              height: 32,
+                            ),
+                            padding: EdgeInsets.zero,
+                            onPressed: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => PublicPropertyRoutePage(
+                                    property: property,
+                                  ),
+                                ),
+                              );
+                            },
+                            icon: Icon(
+                              Icons.location_on_outlined,
+                              size: compact ? 18 : 20,
+                            ),
+                          ),
+                        ],
                       ),
-                    ),
+                      const SizedBox(height: 5),
+                      SizedBox(
+                        width: double.infinity,
+                        height: compact ? 34 : 38,
+                        child: ElevatedButton.icon(
+                          onPressed: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => PublicPropertyDetailsPage(
+                                  property: property,
+                                ),
+                              ),
+                            );
+                          },
+                          icon: Icon(
+                            Icons.visibility_outlined,
+                            size: compact ? 14 : 17,
+                          ),
+                          label: Text(
+                            compact ? 'VIEW' : 'VIEW APARTMENT',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: compact ? 10 : 12,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF0B3D2E),
+                            foregroundColor: Colors.white,
+                            padding: EdgeInsets.zero,
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 
-  Widget _propertyInfoChip(IconData icon, String text) {
+  Widget _propertyInfoChip(
+    BuildContext context,
+    IconData icon,
+    String text, {
+    bool compact = false,
+  }) {
+    final colors = Theme.of(context).colorScheme;
+
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      padding: EdgeInsets.symmetric(
+        horizontal: compact ? 6 : 9,
+        vertical: compact ? 5 : 7,
+      ),
       decoration: BoxDecoration(
-        color: const Color(0xFFF2F7F4),
-        borderRadius: BorderRadius.circular(10),
+        color: colors.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(9),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 16, color: const Color(0xFF0B3D2E)),
-          const SizedBox(width: 5),
+          Icon(icon, size: compact ? 12 : 15, color: colors.primary),
+          SizedBox(width: compact ? 3 : 5),
           Text(
             text,
-            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontWeight: FontWeight.w600,
+              fontSize: compact ? 9 : 11,
+              color: colors.onSurface,
+            ),
           ),
         ],
       ),
