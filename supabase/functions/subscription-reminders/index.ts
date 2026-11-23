@@ -112,15 +112,22 @@ Deno.serve(async (req: Request) => {
     );
     if (!subscriptionsResponse.ok) throw new Error("Could not load subscriptions for reminder scheduling.");
     const subscriptions = await subscriptionsResponse.json();
-    const now = new Date();
-    const todayUtc = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+    const dateKeyInNairobi = (value: Date) => new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Africa/Nairobi",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(value);
+    const todayKey = dateKeyInNairobi(new Date());
+    const todayUtc = new Date(`${todayKey}T00:00:00Z`).getTime();
     const queued: string[] = [];
 
     for (const sub of subscriptions) {
       const normalDue = new Date(sub.next_payment_at);
       const grace = sub.grace_until ? new Date(sub.grace_until) : null;
       const due = grace && grace > normalDue ? grace : normalDue;
-      const dueUtc = Date.UTC(due.getUTCFullYear(), due.getUTCMonth(), due.getUTCDate());
+      const dueDateKey = dateKeyInNairobi(due);
+      const dueUtc = new Date(`${dueDateKey}T00:00:00Z`).getTime();
       const days = Math.round((dueUtc - todayUtc) / 86400000);
       if (![7, 3, 1, 0].includes(days)) continue;
 
@@ -133,7 +140,7 @@ Deno.serve(async (req: Request) => {
             subscription_id: sub.id,
             owner_id: sub.owner_id,
             property_id: sub.property_id,
-            due_date: due.toISOString().slice(0, 10),
+            due_date: dueDateKey,
             days_before: days,
             status: "pending",
           }),
