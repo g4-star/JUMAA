@@ -277,6 +277,91 @@ Deno.serve(async (req) => {
 
     const body = await req.json();
 
+    // Authenticated chat-message push. The caller must own the saved message.
+    if (body?.message_id) {
+      const authorization = req.headers.get("Authorization") ?? "";
+      if (!authorization.startsWith("Bearer ")) {
+        return new Response(JSON.stringify({ success: false, error: "Authentication required." }), {
+          status: 401,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const authResponse = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+        headers: { apikey: SUPABASE_SERVICE_ROLE_KEY, Authorization: authorization },
+      });
+      if (!authResponse.ok) {
+        return new Response(JSON.stringify({ success: false, error: "Invalid session." }), {
+          status: 401,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      const authUser = await authResponse.json();
+
+      const serviceHeaders = {
+        apikey: SUPABASE_SERVICE_ROLE_KEY,
+        Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+      };
+      const messageResponse = await fetch(
+        `${SUPABASE_URL}/rest/v1/messages?id=eq.${encodeURIComponent(String(body.message_id))}&select=id,sender_id,receiver_id,message,conversation_id`,
+        { headers: serviceHeaders },
+      );
+      if (!messageResponse.ok) throw new Error("Could not load chat message.");
+      const messageRows = await messageResponse.json();
+      if (!messageRows.length) {
+        return new Response(JSON.stringify({ success: false, error: "Message not found." }), {
+          status: 404,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const chatMessage = messageRows[0];
+      if (!authUser?.id || authUser.id !== chatMessage.sender_id) {
+        return new Response(JSON.stringify({ success: false, error: "Not authorized to notify for this message." }), {
+          status: 403,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const [senderResponse, tokensResponse] = await Promise.all([
+        fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${encodeURIComponent(authUser.id)}&select=full_name`, { headers: serviceHeaders }),
+        fetch(`${SUPABASE_URL}/rest/v1/push_tokens?user_id=eq.${encodeURIComponent(chatMessage.receiver_id)}&select=id,token`, { headers: serviceHeaders }),
+      ]);
+      if (!tokensResponse.ok) throw new Error("Could not load recipient push devices.");
+
+      const senderRows = senderResponse.ok ? await senderResponse.json() : [];
+      const tokenRows = await tokensResponse.json();
+      const senderName = senderRows[0]?.full_name ?? "JUMAA member";
+      const rawMessage = String(chatMessage.message ?? "You have a new message.");
+      const messageBody = rawMessage.length > 140 ? `${rawMessage.substring(0, 137)}...` : rawMessage;
+      const results = [];
+
+      for (const tokenRecord of tokenRows) {
+        try {
+          await sendFcmNotification(tokenRecord.token, `New message from ${senderName}`, messageBody, {
+            type: "chat_message",
+            message_id: String(chatMessage.id),
+            conversation_id: String(chatMessage.conversation_id),
+          });
+          results.push({ token_id: tokenRecord.id, success: true });
+        } catch (error) {
+          console.error(`Chat push failed for token ${tokenRecord.id}:`, error);
+          results.push({ token_id: tokenRecord.id, success: false });
+        }
+      }
+
+      return new Response(JSON.stringify({
+        success: true,
+        message_id: chatMessage.id,
+        recipient_id: chatMessage.receiver_id,
+        push_devices: tokenRows.length,
+        push_results: results,
+      }), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     // Accept both direct calls and Supabase Database Webhook payloads.
     // ============================================================
     // OWNER REQUEST RESPONSE FLOW

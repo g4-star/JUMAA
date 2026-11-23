@@ -2,6 +2,7 @@ import 'package:material_ui/material_ui.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../models/landlord.dart';
+import '../../services/notification_service.dart';
 
 class LandlordMessagesPage extends StatefulWidget {
   final Landlord landlord;
@@ -1026,6 +1027,10 @@ class _LandlordChatPageState extends State<LandlordChatPage> {
             'message, created_at, status',
           )
           .single();
+
+      await NotificationService.instance.notifyMessageRecipient(
+        inserted['id']?.toString() ?? '',
+      );
 
       final newMessage = ChatMessage(
         id: inserted['id']?.toString() ?? '',

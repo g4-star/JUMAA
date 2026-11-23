@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/message.dart';
+import 'notification_service.dart';
 
 class ChatService {
   final SupabaseClient supabase = Supabase.instance.client;
@@ -106,6 +107,10 @@ class ChatService {
         })
         .select()
         .single();
+
+    await NotificationService.instance.notifyMessageRecipient(
+      row['id'].toString(),
+    );
 
     return Message(
       id: row['id'].toString(),
