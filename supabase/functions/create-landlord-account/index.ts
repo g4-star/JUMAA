@@ -101,6 +101,44 @@ Deno.serve(async (req) => {
     }
 
     // ----------------------------------------------------------
+    // Ensure each phone number identifies one account. The lookup
+    // normalizes common Kenyan formats (07..., 7..., +254...).
+    const phoneLookupResponse = await fetch(
+      `${SUPABASE_URL}/rest/v1/rpc/lookup_jumaa_login_profile_by_phone`,
+      {
+        method: 'POST',
+        headers: {
+          apikey: SUPABASE_SERVICE_ROLE_KEY,
+          Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ p_phone: body.phone }),
+      },
+    );
+
+    if (!phoneLookupResponse.ok) {
+      throw new Error('Could not verify whether the phone number is already registered.');
+    }
+
+    const phoneMatches = await phoneLookupResponse.json();
+    if (Array.isArray(phoneMatches) && phoneMatches.length > 0) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: 'This phone number is already registered to another JUMAA account.',
+          existing: true,
+        }),
+        {
+          status: 409,
+          headers: {
+            ...corsHeaders,
+            'Content-Type': 'application/json',
+          },
+        },
+      );
+    }
+
+    // ----------------------------------------------------------
     // 2. Generate the REAL temporary Supabase Auth password.
     // ----------------------------------------------------------
     const temporaryPassword =
@@ -332,6 +370,7 @@ Deno.serve(async (req) => {
     // ----------------------------------------------------------
     const safeName = escapeHtml(body.full_name);
     const safeEmail = escapeHtml(email);
+    const safePhone = escapeHtml(body.phone.trim());
     const safePassword = escapeHtml(temporaryPassword);
     const safeProperty = escapeHtml(
       body.property_name || 'Your assigned property',
@@ -402,6 +441,7 @@ Deno.serve(async (req) => {
     <p><strong>Property:</strong> ${safeProperty}</p>
 
     <p><strong>Email:</strong> ${safeEmail}</p>
+    <p><strong>Phone number:</strong> ${safePhone}</p>
 
     <div style="background:#E8F3EF;padding:20px;border-radius:12px;margin:20px 0;">
       <p style="margin:0 0 8px;"><strong>Temporary password</strong></p>
@@ -411,7 +451,7 @@ Deno.serve(async (req) => {
     </div>
 
     <p>
-      Use this temporary password to sign in to JUMAA.
+      Sign in to JUMAA using either your registered email address or phone number with this temporary password.
       You will be required to create a new password after signing in.
     </p>
 
