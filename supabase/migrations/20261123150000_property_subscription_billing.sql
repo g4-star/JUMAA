@@ -623,7 +623,7 @@ returns boolean
 language plpgsql
 security definer
 set search_path = public, pg_temp
-as $
+as $claim_jumaa_subscription_reminder$
 begin
   if coalesce(current_setting('request.jwt.claim.role', true), '') <> 'service_role' then
     raise exception 'This operation is restricted to the reminder service.';
@@ -642,7 +642,7 @@ begin
 
   return found;
 end;
-$;
+$claim_jumaa_subscription_reminder$;
 revoke all on function public.claim_jumaa_subscription_reminder(uuid) from public, anon, authenticated;
 grant execute on function public.claim_jumaa_subscription_reminder(uuid) to service_role;
 
@@ -685,7 +685,7 @@ returns jsonb
 language plpgsql
 security definer
 set search_path = public, pg_temp
-as $
+as $review_jumaa_legacy_subscription_credit$
 declare
   v_admin uuid := auth.uid();
   v_sub public.subscriptions%rowtype;
@@ -765,4 +765,5 @@ begin
     'legacy_credit_remaining', greatest(v_pending - p_approved_amount, 0)
   );
 end;
-$;
+$review_jumaa_legacy_subscription_credit$;
+
