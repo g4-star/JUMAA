@@ -268,6 +268,7 @@ declare
   v_original timestamptz;
   v_new timestamptz;
   v_reschedule_id uuid;
+  v_notification_id uuid;
 begin
   if v_admin is null or not exists (
     select 1 from public.profiles p
@@ -345,11 +346,12 @@ begin
     end,
     'subscription_rescheduled',
     false
-  );
+  ) returning id into v_notification_id;
 
   return jsonb_build_object(
     'success', true,
     'reschedule_id', v_reschedule_id,
+    'notification_id', v_notification_id,
     'mode', p_mode,
     'original_due_at', v_original,
     'new_due_at', p_new_due_at
