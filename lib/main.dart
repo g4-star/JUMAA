@@ -14916,7 +14916,7 @@ class _RegisterApartmentPageState extends State<RegisterApartmentPage> {
   @override
   Widget build(BuildContext context) {
     return Theme(
-      data: Theme.of(context).copyWith(
+      data: ThemeData.light(useMaterial3: true).copyWith(
         brightness: Brightness.light,
         scaffoldBackgroundColor: Colors.white,
         colorScheme: ColorScheme.fromSeed(
