@@ -85,7 +85,7 @@ Deno.serve(async (req: Request) => {
     if (!Array.isArray(subscriptions) || subscriptions.length !== 1) {
       return jsonResponse({ success: false, error: "No unique subscription exists for this property. Contact JUMAA support." }, 409);
     }
-    const subscription = subscriptions[0];
+    let subscription = subscriptions[0];
 
     const unitsResponse = await adminFetch(
       `units?property_id=eq.${encodeURIComponent(propertyId)}&select=id`,
@@ -104,6 +104,33 @@ Deno.serve(async (req: Request) => {
     if (!Number.isFinite(monthlyRate) || monthlyRate <= 0) {
       return jsonResponse({ success: false, error: "This property requires a custom subscription plan." }, 400);
     }
+
+    // Synchronize the actual unit-based rate before applying any verified
+    // credit. Full months already covered by credit are applied atomically.
+    const rateSyncResponse = await adminFetch(`subscriptions?id=eq.${encodeURIComponent(subscription.id)}`, {
+      method: "PATCH",
+      headers: { Prefer: "return=minimal" },
+      body: JSON.stringify({ unit_count: unitCount, monthly_amount: monthlyRate, updated_at: new Date().toISOString() }),
+    });
+    if (!rateSyncResponse.ok) throw new Error("Could not synchronize the property's current subscription rate.");
+
+    const creditApplyResponse = await adminFetch("rpc/apply_jumaa_subscription_credit", {
+      method: "POST",
+      body: JSON.stringify({ p_subscription_id: subscription.id }),
+    });
+    if (!creditApplyResponse.ok) {
+      throw new Error(`Could not apply verified subscription credit: ${await creditApplyResponse.text()}`);
+    }
+
+    const refreshedSubscriptionResponse = await adminFetch(
+      `subscriptions?id=eq.${encodeURIComponent(subscription.id)}&select=*`,
+    );
+    if (!refreshedSubscriptionResponse.ok) throw new Error("Could not reload the updated property subscription.");
+    const refreshedSubscriptions = await refreshedSubscriptionResponse.json();
+    if (!Array.isArray(refreshedSubscriptions) || refreshedSubscriptions.length !== 1) {
+      throw new Error("The property subscription could not be uniquely reloaded.");
+    }
+    subscription = refreshedSubscriptions[0];
 
     const credit = Math.max(Number(subscription.available_credit_amount ?? 0), 0);
     const legacyCreditPending = Math.max(
@@ -202,13 +229,6 @@ Deno.serve(async (req: Request) => {
       });
       return jsonResponse({ success: false, error: paystack?.message ?? "Could not initialize Paystack payment." }, 400);
     }
-
-    // Keep the subscription's pricing snapshot in sync with the actual units.
-    await adminFetch(`subscriptions?id=eq.${encodeURIComponent(subscription.id)}`, {
-      method: "PATCH",
-      headers: { Prefer: "return=minimal" },
-      body: JSON.stringify({ unit_count: unitCount, monthly_amount: monthlyRate, updated_at: new Date().toISOString() }),
-    });
 
     return jsonResponse({
       success: true,
