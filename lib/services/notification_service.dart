@@ -161,10 +161,14 @@ class NotificationService {
             ? 'ios'
             : 'android';
 
-    await _supabase.rpc(
-      'register_push_token',
-      params: {'p_token': token, 'p_platform': platform},
+    final response = await _supabase.functions.invoke(
+      'register-push-token',
+      body: {'token': token, 'platform': platform},
     );
+
+    if (response.status < 200 || response.status >= 300) {
+      throw Exception('Push token registration failed: ${response.status}');
+    }
   }
 
   /// Requests a server-side push for a message already saved in Supabase.
