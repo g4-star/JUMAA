@@ -1089,7 +1089,7 @@ class _SubscriptionsPlaceholderPageState
       }
       property ??= properties.first;
 
-      final response = await OpenNestStore.supabase
+      var response = await OpenNestStore.supabase
           .from('subscriptions')
           .select()
           .eq('owner_id', user.id)
@@ -1098,6 +1098,23 @@ class _SubscriptionsPlaceholderPageState
 
       if (response == null) {
         throw Exception('No subscription exists for ${property.name}.');
+      }
+
+      // Apply complete months already funded by verified property credit
+      // before displaying the amount due or offering another checkout.
+      await OpenNestStore.supabase.rpc(
+        'apply_jumaa_subscription_credit',
+        params: {'p_subscription_id': response['id']},
+      );
+      response = await OpenNestStore.supabase
+          .from('subscriptions')
+          .select()
+          .eq('owner_id', user.id)
+          .eq('property_id', property.id)
+          .maybeSingle();
+
+      if (response == null) {
+        throw Exception('The subscription could not be reloaded.');
       }
 
       final paymentResponse = await OpenNestStore.supabase
