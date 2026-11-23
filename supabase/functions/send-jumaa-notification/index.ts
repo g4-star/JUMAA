@@ -277,6 +277,109 @@ Deno.serve(async (req) => {
 
     const body = await req.json();
 
+    // ============================================================
+    // SUBSCRIPTION PAYMENT / RESCHEDULE NOTIFICATIONS
+    // The database row is created by a trusted billing Edge Function.
+    // ============================================================
+    const ownerNotificationId = body?.owner_notification_id;
+    if (ownerNotificationId) {
+      const supabaseHeaders = {
+        apikey: SUPABASE_SERVICE_ROLE_KEY,
+        Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+        "Content-Type": "application/json",
+      };
+
+      const eventResponse = await fetch(
+        `${SUPABASE_URL}/rest/v1/notification_events`,
+        {
+          method: "POST",
+          headers: {
+            ...supabaseHeaders,
+            Prefer: "return=representation,resolution=ignore-duplicates",
+          },
+          body: JSON.stringify({
+            event_type: "owner_billing_notification",
+            event_id: ownerNotificationId,
+          }),
+        },
+      );
+      if (!eventResponse.ok) throw new Error("Could not register billing notification event.");
+      const registered = await eventResponse.json();
+      if (!registered.length) {
+        return new Response(
+          JSON.stringify({ success: true, duplicate: true, owner_notification_id: ownerNotificationId }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+
+      const notificationResponse = await fetch(
+        `${SUPABASE_URL}/rest/v1/owner_notifications?id=eq.${encodeURIComponent(ownerNotificationId)}&select=id,owner_id,title,message,notification_type`,
+        { headers: supabaseHeaders },
+      );
+      if (!notificationResponse.ok) throw new Error("Could not load owner billing notification.");
+      const notificationRows = await notificationResponse.json();
+      if (!notificationRows.length) throw new Error("Owner billing notification not found.");
+      const notification = notificationRows[0];
+
+      const [profileResponse, tokenResponse] = await Promise.all([
+        fetch(
+          `${SUPABASE_URL}/rest/v1/profiles?id=eq.${encodeURIComponent(notification.owner_id)}&select=id,full_name,email`,
+          { headers: supabaseHeaders },
+        ),
+        fetch(
+          `${SUPABASE_URL}/rest/v1/push_tokens?user_id=eq.${encodeURIComponent(notification.owner_id)}&select=id,token`,
+          { headers: supabaseHeaders },
+        ),
+      ]);
+      if (!profileResponse.ok || !tokenResponse.ok) throw new Error("Could not load billing notification recipients.");
+      const profiles = await profileResponse.json();
+      const tokens = await tokenResponse.json();
+      const profile = profiles[0];
+      const title = notification.title ?? "JUMAA Subscription Update";
+      const message = notification.message ?? "Your property subscription has been updated.";
+
+      const pushResults = [];
+      for (const token of tokens) {
+        try {
+          await sendFcmNotification(token.token, title, message, {
+            type: String(notification.notification_type ?? "subscription"),
+            owner_notification_id: String(notification.id),
+          });
+          pushResults.push({ token_id: token.id, success: true });
+        } catch (error) {
+          console.error("Billing push delivery failed:", error);
+          pushResults.push({ token_id: token.id, success: false });
+        }
+      }
+
+      let emailSent = false;
+      if (profile?.email) {
+        try {
+          await sendBrevoEmail(
+            profile.email,
+            title,
+            `<div style="font-family:Arial,sans-serif;line-height:1.6"><h2>${title}</h2><p>Hello ${profile.full_name ?? "Property Owner"},</p><p>${message}</p><p>Open JUMAA to review your property subscription.</p></div>`,
+          );
+          emailSent = true;
+        } catch (error) {
+          console.error("Billing email delivery failed:", error);
+        }
+      }
+
+      return new Response(
+        JSON.stringify({
+          success: true,
+          owner_notification_id: notification.id,
+          push_devices: tokens.length,
+          push_results: pushResults,
+          email_sent: emailSent,
+        }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+
+
     // Accept both direct calls and Supabase Database Webhook payloads.
     // ============================================================
     // OWNER REQUEST RESPONSE FLOW
