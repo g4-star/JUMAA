@@ -121,7 +121,7 @@ Deno.serve(async (req: Request) => {
 
     const notificationResponse = await supabaseFetch("owner_notifications", {
       method: "POST",
-      headers: { Prefer: "return=minimal" },
+      headers: { Prefer: "return=representation" },
       body: JSON.stringify({
         owner_id: payment.owner_id,
         title: notificationTitle,
@@ -130,27 +130,35 @@ Deno.serve(async (req: Request) => {
         is_read: false,
       }),
     });
+    let notificationId: string | null = null;
     if (!notificationResponse.ok) {
       console.error("Subscription payment notification could not be stored:", await notificationResponse.text());
+    } else {
+      const notificationRows = await notificationResponse.json();
+      notificationId = notificationRows?.[0]?.id ?? null;
     }
 
-    // Email is best-effort: a mail outage must never roll back a verified payment.
-    const brevoKey = Deno.env.get("BREVO_API_KEY");
-    const emailFrom = Deno.env.get("EMAIL_FROM");
-    if (brevoKey && owner?.email) {
+    // Best-effort push and email delivery. Payment settlement is already
+    // committed atomically and is never rolled back by a notification outage.
+    if (notificationId) {
       try {
-        await fetch("https://api.brevo.com/v3/smtp/email", {
-          method: "POST",
-          headers: { "api-key": brevoKey, "Content-Type": "application/json" },
-          body: JSON.stringify({
-            sender: { name: "JUMAA", email: emailFrom ?? "no-reply@jumaa.app" },
-            to: [{ email: owner.email }],
-            subject: notificationTitle,
-            htmlContent: `<div style="font-family:Arial,sans-serif;line-height:1.6"><h2>${notificationTitle}</h2><p>Hello ${String(owner.full_name ?? "Property Owner")},</p><p>${notificationMessage}</p><p>Receipt: <strong>${settlement.receipt_number}</strong></p><p>Paystack reference: ${reference}</p><p>Open JUMAA to view your property subscription and payment receipt.</p></div>`,
-          }),
-        });
+        const deliveryResponse = await fetch(
+          `${SUPABASE_URL}/functions/v1/send-jumaa-notification`,
+          {
+            method: "POST",
+            headers: {
+              apikey: SUPABASE_SERVICE_ROLE_KEY,
+              Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ owner_notification_id: notificationId }),
+          },
+        );
+        if (!deliveryResponse.ok) {
+          console.error("Subscription payment push/email delivery failed:", await deliveryResponse.text());
+        }
       } catch (error) {
-        console.error("Subscription payment email failed:", error);
+        console.error("Subscription payment notification dispatch failed:", error);
       }
     }
 
@@ -161,6 +169,7 @@ Deno.serve(async (req: Request) => {
       reference,
       ...settlement,
       notification_saved: notificationResponse.ok,
+      notification_dispatched: Boolean(notificationId),
     });
   } catch (error) {
     console.error("PAYSTACK SUBSCRIPTION WEBHOOK ERROR:", error);
