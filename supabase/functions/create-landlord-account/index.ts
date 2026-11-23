@@ -332,6 +332,7 @@ Deno.serve(async (req) => {
     // ----------------------------------------------------------
     const safeName = escapeHtml(body.full_name);
     const safeEmail = escapeHtml(email);
+    const safePhone = escapeHtml(body.phone.trim());
     const safePassword = escapeHtml(temporaryPassword);
     const safeProperty = escapeHtml(
       body.property_name || 'Your assigned property',
@@ -402,6 +403,7 @@ Deno.serve(async (req) => {
     <p><strong>Property:</strong> ${safeProperty}</p>
 
     <p><strong>Email:</strong> ${safeEmail}</p>
+    <p><strong>Phone number:</strong> ${safePhone}</p>
 
     <div style="background:#E8F3EF;padding:20px;border-radius:12px;margin:20px 0;">
       <p style="margin:0 0 8px;"><strong>Temporary password</strong></p>
@@ -411,7 +413,7 @@ Deno.serve(async (req) => {
     </div>
 
     <p>
-      Use this temporary password to sign in to JUMAA.
+      Sign in to JUMAA using either your registered email address or phone number with this temporary password.
       You will be required to create a new password after signing in.
     </p>
 
