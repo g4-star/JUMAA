@@ -1724,13 +1724,18 @@ class _SubscriptionsPlaceholderPageState
             ),
           ),
 
-          if (_payments.any((item) => item['status']?.toString().toLowerCase() == 'success')) ...[
+          if (_payments.any((item) => _isSuccessfulPayment(item))) ...[
             const SizedBox(height: 16),
             _buildLatestReceipt(context),
           ],
         ],
       ),
     );
+  }
+
+  bool _isSuccessfulPayment(Map<String, dynamic> payment) {
+    final status = payment['status']?.toString().toLowerCase();
+    return status == 'success' || status == 'successful';
   }
 
   String _receiptNumber(Map<String, dynamic> payment) {
@@ -2087,7 +2092,7 @@ class _SubscriptionsPlaceholderPageState
   }
 
   Future<void> _downloadReceipt(Map<String, dynamic> payment) async {
-    if (payment['status']?.toString().toLowerCase() != 'success') {
+    if (!_isSuccessfulPayment(payment)) {
       _showMessage('Only verified successful payments have downloadable receipts.', isError: true);
       return;
     }
@@ -2181,7 +2186,9 @@ class _SubscriptionsPlaceholderPageState
   void _showReceipt(Map<String, dynamic> payment) {
     final amount = _paymentAmount(payment);
     final months = _paymentMonths(payment);
-    final status = payment['status']?.toString().toUpperCase() ?? '—';
+    final status = _isSuccessfulPayment(payment)
+        ? 'SUCCESS'
+        : (payment['status']?.toString().toUpperCase() ?? '—');
 
     showDialog(
       context: context,
