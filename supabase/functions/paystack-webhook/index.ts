@@ -43,13 +43,11 @@ Deno.serve(async (req: Request) => {
     if (!signature) return jsonResponse({ success: false, error: "Missing Paystack signature." }, 401);
 
     const expected = createHmac("sha512", PAYSTACK_SECRET_KEY).update(rawBody).digest("hex");
-    const expectedBytes = new TextEncoder().encode(expected);
-    const suppliedBytes = new TextEncoder().encode(signature);
-    if (expectedBytes.length !== suppliedBytes.length || !crypto.subtle.timingSafeEqual) {
-      // Deno WebCrypto has no timingSafeEqual in every runtime; compare fixed-length
-      // signature bytes without accepting malformed lengths.
-      if (expected !== signature) return jsonResponse({ success: false, error: "Invalid Paystack signature." }, 401);
-    } else if (expected !== signature) {
+    let signatureMismatch = expected.length ^ signature.length;
+    for (let i = 0; i < Math.max(expected.length, signature.length); i++) {
+      signatureMismatch |= (expected.charCodeAt(i) || 0) ^ (signature.charCodeAt(i) || 0);
+    }
+    if (signatureMismatch !== 0) {
       return jsonResponse({ success: false, error: "Invalid Paystack signature." }, 401);
     }
 
