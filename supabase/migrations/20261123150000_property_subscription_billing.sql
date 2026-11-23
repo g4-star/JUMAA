@@ -507,4 +507,38 @@ set trial_started_at = coalesce(trial_started_at, created_at),
     outstanding_balance = coalesce(outstanding_balance, 0)
 where true;
 
+
+-- Durable reminder outbox. A daily scheduled Edge Function delivers these
+-- through in-app notifications, FCM and Brevo, retrying failed deliveries.
+create table if not exists public.subscription_reminder_events (
+  id uuid primary key default gen_random_uuid(),
+  subscription_id uuid not null references public.subscriptions(id) on delete restrict,
+  owner_id uuid not null references public.profiles(id) on delete restrict,
+  property_id uuid not null references public.properties(id) on delete restrict,
+  due_date date not null,
+  days_before integer not null check (days_before in (7, 3, 1, 0)),
+  status text not null default 'pending' check (status in ('pending', 'processing', 'sent', 'failed')),
+  attempts integer not null default 0,
+  last_error text,
+  created_at timestamptz not null default now(),
+  sent_at timestamptz,
+  unique(subscription_id, due_date, days_before)
+);
+create index if not exists subscription_reminder_events_pending_idx
+  on public.subscription_reminder_events(status, created_at)
+  where status in ('pending', 'failed');
+alter table public.subscription_reminder_events enable row level security;
+drop policy if exists "JUMAA admins can view subscription reminder events"
+  on public.subscription_reminder_events;
+create policy "JUMAA admins can view subscription reminder events"
+on public.subscription_reminder_events
+for select to authenticated
+using (exists (
+  select 1 from public.profiles p
+  where p.id = (select auth.uid())
+    and lower(coalesce(p.role, '')) = 'jumaa_owner'
+));
+revoke insert, update, delete on public.subscription_reminder_events from anon, authenticated;
+grant select on public.subscription_reminder_events to authenticated;
+
 commit;
