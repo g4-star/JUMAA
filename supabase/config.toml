@@ -14,3 +14,13 @@ entrypoint = "./functions/reset-jumaa-owner-password/index.ts"
 # Specifies static files to be bundled with the function. Supports glob patterns.
 # For example, if you want to serve static HTML pages in your function:
 # static_files = [ "./functions/reset-jumaa-owner-password/*.html" ]
+
+
+[functions.initialize-subscription-payment]
+verify_jwt = true
+
+[functions.send-jumaa-notification]
+verify_jwt = true
+
+[functions.subscription-reminders]
+verify_jwt = true
