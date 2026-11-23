@@ -258,6 +258,7 @@ Deno.serve(async (req) => {
     // ----------------------------------------------------------
     const safeName = escapeHtml(body.full_name);
     const safeEmail = escapeHtml(email);
+    const safePhone = escapeHtml(body.phone.trim());
     const safePassword = escapeHtml(temporaryPassword);
     const safeApartment = escapeHtml(body.apartment || 'Your assigned unit');
 
@@ -332,11 +333,12 @@ Deno.serve(async (req) => {
 
     <div style="background:#eef5f1;padding:20px;border-radius:10px;margin:25px 0;">
       <p><strong>Email:</strong> ${safeEmail}</p>
+      <p><strong>Phone number:</strong> ${safePhone}</p>
       <p><strong>Temporary password:</strong> ${safePassword}</p>
     </div>
 
     <p>
-      Use these credentials to log in to the JUMAA app.
+      Sign in to JUMAA using either your registered email address or phone number with this temporary password.
       You will be required to change your temporary password.
     </p>
 
