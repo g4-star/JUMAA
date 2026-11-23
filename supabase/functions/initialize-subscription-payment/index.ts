@@ -105,7 +105,11 @@ Deno.serve(async (req: Request) => {
       return jsonResponse({ success: false, error: "This property requires a custom subscription plan." }, 400);
     }
 
-    const credit = Math.max(Number(subscription.credit_amount ?? 0), 0);
+    const credit = Math.max(Number(subscription.available_credit_amount ?? 0), 0);
+    const legacyCreditPending = Math.max(
+      Number(subscription.legacy_credit_amount ?? 0) - Number(subscription.legacy_credit_reviewed_amount ?? 0),
+      0,
+    );
     const dueNow = Math.max(Math.round((monthlyRate - credit) * 100) / 100, 0);
     if (dueNow <= 0) {
       return jsonResponse({
@@ -114,6 +118,7 @@ Deno.serve(async (req: Request) => {
         message: "Your available property credit already covers the next billing period.",
         monthly_amount: monthlyRate,
         available_credit: credit,
+        legacy_credit_pending_review: legacyCreditPending,
         amount_due: 0,
       });
     }
@@ -125,6 +130,7 @@ Deno.serve(async (req: Request) => {
         error: `The minimum amount due after applying property credit is KES ${dueNow.toFixed(2)}.`,
         minimum_amount: dueNow,
         available_credit: credit,
+        legacy_credit_pending_review: legacyCreditPending,
       }, 400);
     }
 
@@ -180,6 +186,7 @@ Deno.serve(async (req: Request) => {
           subscription_id: subscription.id,
           monthly_amount: monthlyRate,
           available_credit: credit,
+          legacy_credit_pending_review: legacyCreditPending,
           amount_due_before_payment: dueNow,
           units_count: unitCount,
         },
@@ -213,6 +220,7 @@ Deno.serve(async (req: Request) => {
       amount,
       monthly_amount: monthlyRate,
       available_credit: credit,
+      legacy_credit_pending_review: legacyCreditPending,
       amount_due: dueNow,
       unit_count: unitCount,
     });
