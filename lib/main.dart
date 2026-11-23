@@ -1787,7 +1787,7 @@ class _SubscriptionsPlaceholderPageState
 
   Widget _buildLatestReceipt(BuildContext context) {
     final payment = _payments.firstWhere(
-      (item) => item['status']?.toString().toLowerCase() == 'success',
+      (item) => _isSuccessfulPayment(item),
       orElse: () => <String, dynamic>{},
     );
     if (payment.isEmpty) return const SizedBox.shrink();
