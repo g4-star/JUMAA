@@ -36,6 +36,37 @@ import 'screens/jumaa_permissions_page.dart';
 import 'firebase_options.dart';
 
 // ============================================================
+// Sign in with either the account email or its registered phone number.
+// Phone lookup and password verification happen inside the phone-login Edge Function;
+// the account email is never returned to the unauthenticated client.
+Future<void> _signInWithEmailOrPhone(
+  String identifier,
+  String password,
+) async {
+  final supabase = OpenNestStore.supabase;
+  final value = identifier.trim();
+
+  if (value.contains('@')) {
+    await supabase.auth.signInWithPassword(
+      email: value.toLowerCase(),
+      password: password,
+    );
+    return;
+  }
+
+  final result = await supabase.functions.invoke(
+    'phone-login',
+    body: {'phone': value, 'password': password},
+  );
+
+  final data = result.data;
+  if (data is! Map || data['refresh_token'] is! String) {
+    throw const AuthException('Invalid phone number or password.');
+  }
+
+  await supabase.auth.setSession(data['refresh_token'].toString());
+}
+
 // JUMAA EMAIL SERVICE
 // ============================================================
 
@@ -95,6 +126,7 @@ class JumaaEmailService {
     <p><strong>Email:</strong> ${_escape(email)}</p>
     <p><strong>Phone:</strong> ${_escape(phone)}</p>
     <p><strong>Apartment:</strong> ${_escape(apartmentName)}</p>
+    <p>You can sign in using either your registered email address or phone number, together with your password.</p>
 
     <div style="background:#eef5f1;padding:18px;border-radius:10px;margin:20px 0;">
       <p><strong>Temporary password</strong></p>
@@ -10859,19 +10891,19 @@ class LandlordLoginPage extends StatefulWidget {
 }
 
 class _LandlordLoginPageState extends State<LandlordLoginPage> {
-  final emailController = TextEditingController();
+  final identifierController = TextEditingController();
   final passwordController = TextEditingController();
 
   bool obscurePassword = true;
   bool isLoading = false;
 
   Future<void> _login() async {
-    final email = emailController.text.trim().toLowerCase();
+    final identifier = identifierController.text.trim();
     final password = passwordController.text;
 
-    if (email.isEmpty || password.isEmpty) {
+    if (identifier.isEmpty || password.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Enter your email and password.')),
+        const SnackBar(content: Text('Enter your email or phone number and password.')),
       );
       return;
     }
@@ -10881,12 +10913,9 @@ class _LandlordLoginPageState extends State<LandlordLoginPage> {
     });
 
     try {
-      final response = await OpenNestStore.supabase.auth.signInWithPassword(
-        email: email,
-        password: password,
-      );
+      await _signInWithEmailOrPhone(identifier, password);
 
-      if (response.user == null) {
+      if (OpenNestStore.supabase.auth.currentUser == null) {
         throw const AuthException('Login failed.');
       }
 
@@ -11014,15 +11043,16 @@ class _LandlordLoginPageState extends State<LandlordLoginPage> {
                   ),
                   const SizedBox(height: 32),
                   TextField(
-                    controller: emailController,
-                    keyboardType: TextInputType.emailAddress,
+                    controller: identifierController,
+                    keyboardType: TextInputType.text,
                     style: const TextStyle(color: Colors.black, fontSize: 16),
                     cursorColor: Colors.black,
                     decoration: InputDecoration(
-                      labelText: 'Email',
+                      labelText: 'Email or phone number',
+                      hintText: 'Enter your registered email or phone number',
                       labelStyle: const TextStyle(color: Colors.grey),
                       prefixIcon: const Icon(
-                        Icons.email_outlined,
+                        Icons.person_outline,
                         color: Colors.grey,
                       ),
                       filled: true,
@@ -17780,7 +17810,7 @@ class JUMAALoginPage extends StatefulWidget {
 }
 
 class _JUMAALoginPageState extends State<JUMAALoginPage> {
-  final _emailController = TextEditingController();
+  final _identifierController = TextEditingController();
   final _passwordController = TextEditingController();
 
   bool _obscurePassword = true;
@@ -17795,7 +17825,7 @@ class _JUMAALoginPageState extends State<JUMAALoginPage> {
 
   @override
   void dispose() {
-    _emailController.dispose();
+    _identifierController.dispose();
     _passwordController.dispose();
     super.dispose();
   }
@@ -17824,12 +17854,12 @@ class _JUMAALoginPageState extends State<JUMAALoginPage> {
   }
 
   Future<void> _login() async {
-    final email = _emailController.text.trim().toLowerCase();
+    final identifier = _identifierController.text.trim();
     final password = _passwordController.text.trim();
 
-    if (email.isEmpty || password.isEmpty) {
+    if (identifier.isEmpty || password.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Enter your email and password.')),
+        const SnackBar(content: Text('Enter your email or phone number and password.')),
       );
       return;
     }
@@ -17842,12 +17872,9 @@ class _JUMAALoginPageState extends State<JUMAALoginPage> {
       // ----------------------------------------------------------
       // JUMAA LOGIN — SUPABASE AUTH
       // ----------------------------------------------------------
-      final response = await OpenNestStore.supabase.auth.signInWithPassword(
-        email: email,
-        password: password,
-      );
+      await _signInWithEmailOrPhone(identifier, password);
 
-      final user = response.user;
+      final user = OpenNestStore.supabase.auth.currentUser;
 
       if (user == null) {
         throw Exception('Supabase did not return a user.');
@@ -17977,7 +18004,7 @@ class _JUMAALoginPageState extends State<JUMAALoginPage> {
         final prefs = await SharedPreferences.getInstance();
 
         await prefs.setBool('jumaa_logged_in', true);
-        await prefs.setString('jumaa_logged_in_email', email);
+        await prefs.setString('jumaa_logged_in_email', user.email ?? identifier);
         await prefs.setString('jumaa_logged_in_role', 'landlord');
 
         if (!mounted) return;
@@ -18222,12 +18249,13 @@ class _JUMAALoginPageState extends State<JUMAALoginPage> {
           const SizedBox(height: 35),
 
           TextField(
-            controller: _emailController,
-            keyboardType: TextInputType.emailAddress,
+            controller: _identifierController,
+            keyboardType: TextInputType.text,
             style: const TextStyle(color: Colors.black, fontSize: 16),
             decoration: InputDecoration(
-              labelText: 'Email',
-              prefixIcon: const Icon(Icons.email_outlined),
+              labelText: 'Email or phone number',
+              prefixIcon: const Icon(Icons.person_outline),
+              hintText: 'Enter your registered email or phone number',
               filled: true,
               fillColor: Colors.white,
               border: OutlineInputBorder(
