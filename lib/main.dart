@@ -1183,9 +1183,22 @@ class _SubscriptionsPlaceholderPageState
     return (legacy - reviewed).clamp(0, double.infinity).toDouble();
   }
 
-  double get _amountDue {
+  double get _scheduledAmountDue {
     return (_monthlyAmount - _creditAmount).clamp(0, double.infinity).toDouble();
   }
+
+  bool get _isPaymentDue {
+    final nextDue = DateTime.tryParse(
+      (_subscription?['grace_until'] ?? _subscription?['next_payment_at'] ?? _subscription?['trial_ends_at'])?.toString() ?? '',
+    );
+    if (nextDue == null) return true;
+    final today = DateTime.now();
+    final dueDay = DateTime(nextDue.toLocal().year, nextDue.toLocal().month, nextDue.toLocal().day);
+    final todayDay = DateTime(today.year, today.month, today.day);
+    return !dueDay.isAfter(todayDay);
+  }
+
+  double get _amountDue => _isPaymentDue ? _scheduledAmountDue : 0;
 
   String get _status {
     return (_subscription?['status']?.toString() ?? 'unknown').toUpperCase();
@@ -1255,7 +1268,12 @@ class _SubscriptionsPlaceholderPageState
       return;
     }
 
-    if (_amountDue <= 0) {
+    if (!_isPaymentDue) {
+      _showMessage('Your next subscription payment is not due yet.');
+      return;
+    }
+
+    if (_scheduledAmountDue <= 0) {
       _showMessage('Your available property credit covers the next billing period.');
       return;
     }
@@ -1280,7 +1298,7 @@ class _SubscriptionsPlaceholderPageState
         body: {
           'owner_id': user.id,
           'property_id': property.id,
-          'amount': _amountDue,
+          'amount': _scheduledAmountDue,
           'email': email,
         },
       );
@@ -1562,9 +1580,14 @@ class _SubscriptionsPlaceholderPageState
 
                   _infoRow('Amount due now', 'KES ${_amountDue.toStringAsFixed(2)}'),
 
+                  if (!_isPaymentDue) ...[
+                    const SizedBox(height: 12),
+                    _infoRow('Next scheduled amount', 'KES ${_scheduledAmountDue.toStringAsFixed(2)}'),
+                  ],
+
                   const SizedBox(height: 12),
 
-                  _infoRow('Next payment date', _formatDate(subscription['next_payment_at'])),
+                  _infoRow('Next payment date', _formatDate(subscription['grace_until'] ?? subscription['next_payment_at'])),
 
                   if (subscription['grace_until'] != null) ...[
                     const SizedBox(height: 12),
@@ -1666,7 +1689,9 @@ class _SubscriptionsPlaceholderPageState
                             ? 'OPENING PAYSTACK...'
                             : _status == 'ACTIVE'
                             ? 'RENEW WITH PAYSTACK'
-                            : _amountDue <= 0
+                            : !_isPaymentDue
+                            ? 'PAYMENT NOT DUE YET'
+                            : _scheduledAmountDue <= 0
                             ? 'CREDIT COVERS NEXT PERIOD'
                             : 'PAY WITH PAYSTACK',
                       ),
