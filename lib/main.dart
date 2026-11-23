@@ -16430,6 +16430,7 @@ class _PublicUserPageState extends State<PublicUserPage> {
   final TextEditingController _searchController = TextEditingController();
 
   String _search = '';
+  bool _showSearchField = false;
   bool _loadingApartments = true;
   String? _loadError;
 
@@ -17104,299 +17105,184 @@ class _PublicUserPageState extends State<PublicUserPage> {
           'Find an Apartment',
           style: TextStyle(fontWeight: FontWeight.bold),
         ),
+        actions: [
+          IconButton(
+            tooltip: _showSearchField ? 'Hide search' : 'Search apartments',
+            onPressed: () {
+              setState(() {
+                _showSearchField = !_showSearchField;
+              });
+            },
+            icon: Icon(
+              _showSearchField ? Icons.search_off_rounded : Icons.search_rounded,
+            ),
+          ),
+          IconButton(
+            tooltip: _hasMarketplaceFilters ? 'Filters active' : 'Filter apartments',
+            onPressed: _openMarketplaceFilters,
+            icon: Badge(
+              isLabelVisible: _hasMarketplaceFilters,
+              smallSize: 8,
+              child: const Icon(Icons.tune_rounded),
+            ),
+          ),
+          if (_hasMarketplaceFilters)
+            IconButton(
+              tooltip: 'Clear filters',
+              onPressed: _clearMarketplaceFilters,
+              icon: const Icon(Icons.filter_alt_off_rounded),
+            ),
+        ],
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Find your next home',
-              style: TextStyle(
-                fontSize: 28,
-                fontWeight: FontWeight.w800,
-                color: Color(0xFF0B3D2E),
-              ),
-            ),
-
-            const SizedBox(height: 8),
-
-            const Text(
-              'Search apartments and connect with landlords.',
-              style: TextStyle(color: Colors.black54, height: 1.4),
-            ),
-
-            const SizedBox(height: 24),
-
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+        children: [
+          if (_showSearchField) ...[
             TextField(
               controller: _searchController,
+              autofocus: false,
               decoration: InputDecoration(
                 hintText: 'Search by apartment, type or rent...',
-                prefixIcon: const Icon(Icons.search),
+                prefixIcon: const Icon(Icons.search_rounded),
                 suffixIcon: _search.isNotEmpty
                     ? IconButton(
-                        icon: const Icon(Icons.clear),
-                        onPressed: () {
-                          _searchController.clear();
-                        },
+                        tooltip: 'Clear search',
+                        icon: const Icon(Icons.clear_rounded),
+                        onPressed: _searchController.clear,
                       )
                     : null,
                 filled: true,
-                fillColor: Colors.white,
+                fillColor: Theme.of(context).colorScheme.surface,
                 border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(18),
-                  borderSide: BorderSide.none,
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: BorderSide(
+                    color: Theme.of(context).dividerColor,
+                  ),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: BorderSide(
+                    color: Theme.of(context).dividerColor,
+                  ),
                 ),
               ),
             ),
-
             const SizedBox(height: 14),
-
-            Row(
-              children: [
-                Expanded(
-                  child: Container(
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(18),
-                      boxShadow: [
-                        BoxShadow(
-                          color: const Color(0xFF0B3D2E)
-                              .withValues(alpha: 0.16),
-                          blurRadius: 14,
-                          offset: const Offset(0, 6),
-                        ),
-                      ],
-                    ),
-                    child: Material(
-                      color: Colors.transparent,
-                      borderRadius: BorderRadius.circular(18),
-                      child: InkWell(
-                        onTap: _openMarketplaceFilters,
-                        borderRadius: BorderRadius.circular(18),
-                        child: Ink(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 14,
-                          ),
-                          decoration: BoxDecoration(
-                            gradient: _hasMarketplaceFilters
-                                ? const LinearGradient(
-                                    colors: [
-                                      Color(0xFF2563EB),
-                                      Color(0xFF7C3AED),
-                                      Color(0xFFDB2777),
-                                    ],
-                                    begin: Alignment.centerLeft,
-                                    end: Alignment.centerRight,
-                                  )
-                                : const LinearGradient(
-                                    colors: [
-                                      Color(0xFF2563EB),
-                                      Color(0xFF4F46E5),
-                                      Color(0xFF9333EA),
-                                    ],
-                                    begin: Alignment.centerLeft,
-                                    end: Alignment.centerRight,
-                                  ),
-                            borderRadius: BorderRadius.circular(18),
-                            border: Border.all(
-                              color: Colors.white.withValues(alpha: 0.12),
-                            ),
-                          ),
-                          child: Row(
-                            children: [
-                              Container(
-                                width: 42,
-                                height: 42,
-                                decoration: BoxDecoration(
-                                  color: _hasMarketplaceFilters
-                                      ? Colors.white.withValues(alpha: 0.16)
-                                      : const Color(0xFF0B3D2E)
-                                            .withValues(alpha: 0.09),
-                                  borderRadius: BorderRadius.circular(13),
-                                ),
-                                child: Icon(
-                                  Icons.tune_rounded,
-                                  color: Colors.white,
-                                  size: 23,
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      _hasMarketplaceFilters
-                                          ? 'FILTERS ACTIVE'
-                                          : 'FILTER APARTMENTS',
-                                      style: TextStyle(
-                                        fontSize: 15,
-                                        fontWeight: FontWeight.w900,
-                                        letterSpacing: 0.3,
-                                        color: Colors.white,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 3),
-                                    Text(
-                                      _hasMarketplaceFilters
-                                          ? 'Tap to change your filters'
-                                          : 'Find apartments that match you',
-                                      style: TextStyle(
-                                        fontSize: 11.5,
-                                        fontWeight: FontWeight.w500,
-                                        color: _hasMarketplaceFilters
-                                            ? Colors.white.withValues(
-                                                alpha: 0.82,
-                                              )
-                                            : Colors.black54,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              Container(
-                                padding: const EdgeInsets.all(8),
-                                decoration: BoxDecoration(
-                                  color: _hasMarketplaceFilters
-                                      ? Colors.white.withValues(alpha: 0.14)
-                                      : const Color(0xFF0B3D2E)
-                                            .withValues(alpha: 0.07),
-                                  shape: BoxShape.circle,
-                                ),
-                                child: Icon(
-                                  Icons.arrow_forward_ios_rounded,
-                                  size: 15,
-                                  color: Colors.white,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
+          ],
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Find your next home',
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.w800,
+                    color: const Color(0xFF0B3D2E),
                   ),
                 ),
-                if (_hasMarketplaceFilters) ...[
-                  const SizedBox(width: 10),
-                  Material(
-                    color: Colors.transparent,
-                    child: InkWell(
-                      onTap: _clearMarketplaceFilters,
-                      borderRadius: BorderRadius.circular(16),
-                      child: Ink(
-                        width: 52,
-                        height: 70,
-                        decoration: BoxDecoration(
-                          color: Colors.red.withValues(alpha: 0.07),
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(
-                            color: Colors.red.withValues(alpha: 0.18),
-                          ),
-                        ),
-                        child: const Icon(
-                          Icons.close_rounded,
-                          color: Colors.red,
-                          size: 23,
-                        ),
-                      ),
+              ),
+              if (_hasMarketplaceFilters)
+                TextButton.icon(
+                  onPressed: _clearMarketplaceFilters,
+                  icon: const Icon(Icons.close_rounded, size: 17),
+                  label: const Text('Clear'),
+                ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Search apartments and connect with landlords.',
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: Theme.of(context).textTheme.bodySmall?.color,
+              height: 1.35,
+            ),
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  '${properties.length} propert${properties.length == 1 ? 'y' : 'ies'} found',
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
+              ),
+              TextButton.icon(
+                onPressed: _openMarketplaceFilters,
+                icon: const Icon(Icons.tune_rounded, size: 18),
+                label: Text(_hasMarketplaceFilters ? 'Edit filters' : 'Filter'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          if (_loadingApartments)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 72),
+              child: Center(
+                child: CircularProgressIndicator(
+                  color: Color(0xFF0B3D2E),
+                ),
+              ),
+            )
+          else if (_loadError != null)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 12),
+              child: Column(
+                children: [
+                  Icon(
+                    Icons.error_outline,
+                    size: 56,
+                    color: Colors.red.shade300,
+                  ),
+                  const SizedBox(height: 12),
+                  const Text(
+                    'Could not load apartments',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    _loadError!,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(color: Colors.black54),
+                  ),
+                  const SizedBox(height: 16),
+                  ElevatedButton.icon(
+                    onPressed: _loadApartmentsInBackground,
+                    icon: const Icon(Icons.refresh),
+                    label: const Text('Retry'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF0B3D2E),
+                      foregroundColor: Colors.white,
                     ),
                   ),
                 ],
-              ],
-            ),
-
-            const SizedBox(height: 14),
-
-            Text(
-              '${properties.length} propert${properties.length == 1 ? 'y' : 'ies'} found',
-              style: const TextStyle(fontWeight: FontWeight.w600),
-            ),
-
-            const SizedBox(height: 12),
-
-            Expanded(
-              child: _loadingApartments
-                  ? const Center(
-                      child: CircularProgressIndicator(
-                        color: Color(0xFF0B3D2E),
-                      ),
-                    )
-                  : _loadError != null
-                  ? Center(
-                      child: Padding(
-                        padding: const EdgeInsets.all(24),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.error_outline,
-                              size: 60,
-                              color: Colors.red.shade300,
-                            ),
-                            const SizedBox(height: 12),
-                            const Text(
-                              'Could not load apartments',
-                              style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              _loadError!,
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(color: Colors.black54),
-                            ),
-                            const SizedBox(height: 16),
-                            ElevatedButton.icon(
-                              onPressed: _loadApartmentsInBackground,
-                              icon: const Icon(Icons.refresh),
-                              label: const Text('Retry'),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: const Color(0xFF0B3D2E),
-                                foregroundColor: Colors.white,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    )
-                  : properties.isEmpty
-                  ? Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            Icons.home_work_outlined,
-                            size: 70,
-                            color: Colors.grey.shade400,
-                          ),
-                          const SizedBox(height: 15),
-                          const Text(
-                            'No apartments found',
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          const Text(
-                            'Try another search.',
-                            style: TextStyle(color: Colors.black54),
-                          ),
-                        ],
-                      ),
-                    )
-                  : ListView.builder(
-                      itemCount: properties.length,
-                      itemBuilder: (context, index) {
-                        return _propertyCard(properties[index]);
-                      },
-                    ),
-            ),
-          ],
-        ),
+              ),
+            )
+          else if (properties.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 56),
+              child: Column(
+                children: [
+                  Icon(
+                    Icons.home_work_outlined,
+                    size: 66,
+                    color: Colors.grey.shade400,
+                  ),
+                  const SizedBox(height: 14),
+                  const Text(
+                    'No apartments found',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 6),
+                  const Text(
+                    'Try another search or adjust your filters.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: Colors.black54),
+                  ),
+                ],
+              ),
+            )
+          else
+            ...properties.map(_propertyCard),
+        ],
       ),
     );
   }
