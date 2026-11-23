@@ -14909,10 +14909,24 @@ class _RegisterApartmentPageState extends State<RegisterApartmentPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black,
+    return Theme(
+      data: Theme.of(context).copyWith(
+        brightness: Brightness.light,
+        scaffoldBackgroundColor: Colors.white,
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: const Color(0xFF0B3D2E),
+          brightness: Brightness.light,
+        ),
+        inputDecorationTheme: const InputDecorationTheme(
+          labelStyle: TextStyle(color: Color(0xFF475569)),
+          hintStyle: TextStyle(color: Color(0xFF94A3B8)),
+        ),
+      ),
+      child: Scaffold(
+      backgroundColor: Colors.white,
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.white,
         elevation: 0,
         foregroundColor: const Color(0xFF0B3D2E),
         title: const Text(
@@ -15378,6 +15392,7 @@ class _RegisterApartmentPageState extends State<RegisterApartmentPage> {
           ],
         ),
       ),
+      ),
     );
   }
 
@@ -15400,28 +15415,28 @@ class _RegisterApartmentPageState extends State<RegisterApartmentPage> {
         keyboardType: keyboardType,
         obscureText: obscureText,
         maxLines: obscureText ? 1 : maxLines,
-        style: const TextStyle(color: Colors.white, fontSize: 15),
-        cursorColor: const Color(0xFF39B982),
+        style: const TextStyle(color: Color(0xFF172033), fontSize: 15),
+        cursorColor: const Color(0xFF0B3D2E),
         decoration: InputDecoration(
           labelText: label,
           hintText: hint,
-          labelStyle: const TextStyle(color: Colors.white70),
+          labelStyle: const TextStyle(color: Color(0xFF475569)),
           floatingLabelStyle: const TextStyle(
             color: Color(0xFF39B982),
             fontWeight: FontWeight.w600,
           ),
-          hintStyle: const TextStyle(color: Colors.white38),
-          prefixIcon: Icon(icon, color: Colors.white70),
+          hintStyle: const TextStyle(color: Color(0xFF94A3B8)),
+          prefixIcon: Icon(icon, color: Color(0xFF64748B)),
           suffixIcon: suffixIcon,
           filled: true,
-          fillColor: const Color(0xFF171717),
+          fillColor: const Color(0xFFF8FAFC),
           contentPadding: const EdgeInsets.symmetric(
             horizontal: 18,
             vertical: 17,
           ),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(16),
-            borderSide: const BorderSide(color: Colors.white12),
+            borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
           ),
           enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(16),
