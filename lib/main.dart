@@ -1687,12 +1687,12 @@ class _SubscriptionsPlaceholderPageState
                       label: Text(
                         _paying
                             ? 'OPENING PAYSTACK...'
-                            : _status == 'ACTIVE'
-                            ? 'RENEW WITH PAYSTACK'
                             : !_isPaymentDue
                             ? 'PAYMENT NOT DUE YET'
                             : _scheduledAmountDue <= 0
                             ? 'CREDIT COVERS NEXT PERIOD'
+                            : _status == 'ACTIVE'
+                            ? 'RENEW WITH PAYSTACK'
                             : 'PAY WITH PAYSTACK',
                       ),
                     ),
