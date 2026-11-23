@@ -442,7 +442,14 @@ begin
     v_sub.trial_ends_at::date,
     current_date
   );
-  if v_period_start < current_date then
+  -- A payment made inside an approved temporary grace period must not move
+  -- the normal billing anchor. Outside that window, a late payment starts a
+  -- fresh paid period from the payment date.
+  if not (
+    v_sub.grace_until is not null
+    and v_sub.next_payment_at is not null
+    and current_date <= v_sub.grace_until::date
+  ) and v_period_start < current_date then
     v_period_start := current_date;
   end if;
 
