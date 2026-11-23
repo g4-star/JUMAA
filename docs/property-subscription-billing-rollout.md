@@ -9,7 +9,7 @@ This change is prepared on `feature/property-based-subscription-billing`. It is 
 - Adding another property creates a separate trial and billing calendar.
 - Unit counts are recalculated from `public.units`; the existing `get_jumaa_monthly_rate` tier schedule remains the source of the monthly price.
 - The authenticated caller, owner profile role, and `properties.owner_id` are checked before a Paystack checkout is initialized.
-- Existing property credit is deducted from the amount due before checkout.
+- Verified property credit is deducted from the amount due before checkout. Historical balances created by the old webhook are quarantined as unverified legacy credit until a JUMAA administrator reviews and approves an amount with a reason.
 - Verified payments are settled by one database transaction. The current property fee is consumed first; any overpayment remains as credit on that property's subscription.
 - Partial payments remain as property credit and do not extend the paid-through date until a full billing month is funded.
 - Landlords and tenants are not permitted to initialize owner subscription payments.
@@ -62,7 +62,8 @@ Every action records the original due date, new due date, administrator, reason 
 - Register two properties for the same owner on different dates; verify each has its own 30-day trial and billing calendar.
 - Verify a landlord and a tenant cannot initialize subscription checkout.
 - Verify an owner cannot pay for a property owned by another account.
-- Verify KSh 2,500 against a KSh 2,400 monthly fee produces KSh 2,400 applied and KSh 100 credit.
+- Verify unverified historical credit is not silently applied; approve it through the administrator review action with an audit reason.
+- Verify KSh 2,500 against a KSh 2,400 monthly fee produces KSh 2,400 applied and KSh 100 verified credit.
 - Verify KSh 2,300 payment with KSh 100 existing credit settles exactly one KSh 2,400 month.
 - Verify a partial payment is retained as credit and leaves the correct outstanding balance.
 - Replay the same Paystack webhook; verify no second extension or duplicate payment notification occurs.
@@ -75,6 +76,7 @@ Every action records the original due date, new due date, administrator, reason 
 
 - The daily reminder function is included, but its scheduler and secrets must be configured in the target Supabase project.
 - The migration backfills a 30-day rollout trial only for eligible existing properties that have no subscription and no subscription payment history. Existing subscription rows and payment history are not reset.
+- Historical credit balances are copied to a separate pending-review balance because the previous webhook double-counted the payment as both paid months and credit. Administrators must review these balances before they can offset new payments.
 - Existing duplicate subscription rows, if any, must be identified before applying the migration. The payment initializer fails closed if a property has more than one subscription.
 - PDF receipts are generated client-side from the verified payment row; this does not yet create a server-hosted immutable PDF artifact.
 - No live database, Paystack, or Edge Function deployment is performed by this PR.
