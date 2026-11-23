@@ -1,3 +1,4 @@
+import 'package:local_auth/local_auth.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -1763,6 +1764,46 @@ class _JumaaOwnerDashboardState extends State<JumaaOwnerDashboard> {
     }
   }
 
+  Future<bool> _authenticateOwnerDeletion() async {
+    final localAuth = LocalAuthentication();
+
+    try {
+      final deviceSupported = await localAuth.isDeviceSupported();
+      if (!deviceSupported) {
+        _showError(
+          'This device has no supported screen-lock or biometric '
+          'authentication. Set up a device PIN, pattern, password, '
+          'fingerprint or Face ID before deleting an owner.',
+        );
+        return false;
+      }
+
+      final authenticated = await localAuth.authenticate(
+        localizedReason:
+            'Verify your identity to permanently delete this apartment owner.',
+        // Keep the system fallback enabled so device PIN, pattern or
+        // passcode can be used when biometrics are unavailable.
+        biometricOnly: false,
+        persistAcrossBackgrounding: true,
+      );
+
+      if (!authenticated && mounted) {
+        _showError('Identity verification was cancelled or unsuccessful.');
+      }
+
+      return authenticated;
+    } catch (e) {
+      debugPrint('OWNER DELETE DEVICE AUTHENTICATION ERROR: $e');
+      if (mounted) {
+        _showError(
+          'Could not verify your identity. No owner data was deleted. '
+          'Check your device screen-lock settings and try again.',
+        );
+      }
+      return false;
+    }
+  }
+
   Future<void> _confirmDeleteUser(String userId, String name) async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -1792,7 +1833,12 @@ class _JumaaOwnerDashboardState extends State<JumaaOwnerDashboard> {
       },
     );
 
-    if (confirmed != true) return;
+    if (confirmed != true || !mounted) return;
+
+    // Device-level verification is mandatory and happens before the
+    // destructive RPC. A cancelled/failed challenge never reaches Supabase.
+    final authenticated = await _authenticateOwnerDeletion();
+    if (!authenticated || !mounted) return;
 
     try {
       await _supabase.rpc(
