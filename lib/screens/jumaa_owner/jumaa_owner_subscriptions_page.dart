@@ -89,10 +89,25 @@ class _JumaaOwnerSubscriptionsPageState
             .select('*')
             .order('created_at', ascending: false)
             .limit(200);
-        for (final row in historyRows) {
-          final item = Map<String, dynamic>.from(row);
+        final history = List<Map<String, dynamic>>.from(historyRows);
+        for (final item in history) {
           final id = item['subscription_id']?.toString() ?? '';
           (_history[id] ??= <Map<String, dynamic>>[]).add(item);
+        }
+        final adminIds = history
+            .map((item) => item['admin_id']?.toString() ?? '')
+            .where((id) => id.isNotEmpty)
+            .toSet()
+            .toList();
+        if (adminIds.isNotEmpty) {
+          final adminRows = await _supabase
+              .from('profiles')
+              .select('id,full_name,email')
+              .inFilter('id', adminIds);
+          for (final row in adminRows) {
+            final item = Map<String, dynamic>.from(row);
+            _owners[item['id'].toString()] = item;
+          }
         }
       }
 
@@ -479,7 +494,8 @@ class _JumaaOwnerSubscriptionsPageState
                   title: Text(item['mode'] == 'shift_cycle' ? 'Billing cycle shifted' : 'Temporary grace granted'),
                   subtitle: Text(
                     '${_date(item['original_due_at'])} → ${_date(item['new_due_at'])}\n'
-                    '${item['reason'] ?? ''}',
+                    '${item['reason'] ?? ''}\n'
+                    'Admin: ${_owners[item['admin_id']?.toString()]?['full_name'] ?? item['admin_id'] ?? 'Unknown'}',
                   ),
                   trailing: Text(_date(item['created_at']), style: const TextStyle(fontSize: 10)),
                 )).toList(),
