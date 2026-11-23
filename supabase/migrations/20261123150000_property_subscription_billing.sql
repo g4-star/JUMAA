@@ -10,6 +10,11 @@ alter table public.subscriptions
   add column if not exists grace_until timestamptz,
   add column if not exists outstanding_balance numeric(12,2) not null default 0,
   add column if not exists credit_amount numeric(12,2) not null default 0,
+  add column if not exists available_credit_amount numeric(12,2) not null default 0,
+  add column if not exists legacy_credit_amount numeric(12,2) not null default 0,
+  add column if not exists legacy_credit_reviewed_amount numeric(12,2) not null default 0,
+  add column if not exists legacy_credit_reviewed_at timestamptz,
+  add column if not exists legacy_credit_reviewed_by uuid,
   add column if not exists billing_timezone text not null default 'Africa/Nairobi';
 
 alter table public.owner_notifications
@@ -196,6 +201,8 @@ begin
       billing_anchor_date,
       next_payment_at,
       credit_amount,
+      available_credit_amount,
+      legacy_credit_amount,
       outstanding_balance,
       billing_timezone,
       created_at,
@@ -210,6 +217,8 @@ begin
       v_trial_start + interval '30 days',
       (v_trial_start + interval '30 days')::date,
       v_trial_start + interval '30 days',
+      0,
+      0,
       0,
       0,
       'Africa/Nairobi',
@@ -453,7 +462,7 @@ begin
 
   v_amount := round(v_payment.amount, 2);
   v_rate := round(v_sub.monthly_amount, 2);
-  v_credit_before := greatest(coalesce(v_sub.credit_amount, 0), 0);
+  v_credit_before := greatest(coalesce(v_sub.available_credit_amount, 0), 0);
 
   if v_amount <= 0 or v_rate <= 0 then
     raise exception 'Payment amount or property subscription rate is invalid.';
@@ -522,6 +531,7 @@ begin
         else billing_anchor_date
       end,
       credit_amount = v_credit_after,
+      available_credit_amount = v_credit_after,
       outstanding_balance = greatest(v_rate - v_credit_after, 0),
       grace_until = null,
       updated_at = v_now
@@ -557,6 +567,12 @@ set trial_started_at = coalesce(trial_started_at, created_at),
       coalesce(next_payment_at, trial_ends_at, subscription_ends_at)::date
     ),
     credit_amount = coalesce(credit_amount, 0),
+    legacy_credit_amount = case
+      when legacy_credit_amount = 0 and coalesce(credit_amount, 0) > 0
+        then coalesce(credit_amount, 0)
+      else legacy_credit_amount
+    end,
+    available_credit_amount = coalesce(available_credit_amount, 0),
     outstanding_balance = coalesce(outstanding_balance, 0)
 where true;
 
@@ -629,5 +645,114 @@ end;
 $;
 revoke all on function public.claim_jumaa_subscription_reminder(uuid) from public, anon, authenticated;
 grant execute on function public.claim_jumaa_subscription_reminder(uuid) to service_role;
+
+
+-- Historical credit balances are quarantined for administrator review because
+-- the previous webhook also added the entire payment to credit while extending
+-- the paid-through date. New verified credit lives in available_credit_amount.
+create table if not exists public.subscription_credit_adjustments (
+  id uuid primary key default gen_random_uuid(),
+  subscription_id uuid not null references public.subscriptions(id) on delete restrict,
+  owner_id uuid not null references public.profiles(id) on delete restrict,
+  property_id uuid not null references public.properties(id) on delete restrict,
+  legacy_credit_before numeric(12,2) not null,
+  approved_amount numeric(12,2) not null check (approved_amount >= 0),
+  available_credit_after numeric(12,2) not null,
+  reason text not null check (length(trim(reason)) >= 5),
+  admin_id uuid not null references public.profiles(id) on delete restrict,
+  created_at timestamptz not null default now()
+);
+alter table public.subscription_credit_adjustments enable row level security;
+drop policy if exists "JUMAA admins can view subscription credit adjustments"
+  on public.subscription_credit_adjustments;
+create policy "JUMAA admins can view subscription credit adjustments"
+on public.subscription_credit_adjustments
+for select to authenticated
+using (exists (
+  select 1 from public.profiles p
+  where p.id = (select auth.uid())
+    and lower(coalesce(p.role, '')) = 'jumaa_owner'
+));
+revoke insert, update, delete on public.subscription_credit_adjustments from anon, authenticated;
+grant select on public.subscription_credit_adjustments to authenticated;
+
+create or replace function public.review_jumaa_legacy_subscription_credit(
+  p_subscription_id uuid,
+  p_approved_amount numeric,
+  p_reason text
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $
+declare
+  v_admin uuid := auth.uid();
+  v_sub public.subscriptions%rowtype;
+  v_pending numeric(12,2);
+  v_new_available numeric(12,2);
+  v_adjustment_id uuid;
+begin
+  if v_admin is null or not exists (
+    select 1 from public.profiles p
+    where p.id = v_admin and lower(coalesce(p.role, '')) = 'jumaa_owner'
+  ) then
+    raise exception 'Only JUMAA administrators can review legacy subscription credit.';
+  end if;
+
+  if p_reason is null or length(trim(p_reason)) < 5 then
+    raise exception 'Please provide a reason of at least five characters.';
+  end if;
+
+  if p_approved_amount is null or p_approved_amount < 0 then
+    raise exception 'Approved credit must be zero or greater.';
+  end if;
+
+  select * into v_sub
+  from public.subscriptions
+  where id = p_subscription_id
+  for update;
+  if not found then raise exception 'Subscription not found.'; end if;
+
+  v_pending := greatest(
+    coalesce(v_sub.legacy_credit_amount, 0)
+      - coalesce(v_sub.legacy_credit_reviewed_amount, 0),
+    0
+  );
+  if p_approved_amount > v_pending then
+    raise exception 'Approved credit cannot exceed the unreviewed legacy balance.';
+  end if;
+
+  v_new_available := coalesce(v_sub.available_credit_amount, 0) + p_approved_amount;
+
+  update public.subscriptions
+  set available_credit_amount = v_new_available,
+      credit_amount = v_new_available,
+      legacy_credit_reviewed_amount = coalesce(legacy_credit_reviewed_amount, 0) + p_approved_amount,
+      legacy_credit_reviewed_at = now(),
+      legacy_credit_reviewed_by = v_admin,
+      outstanding_balance = greatest(monthly_amount - v_new_available, 0),
+      updated_at = now()
+  where id = v_sub.id;
+
+  insert into public.subscription_credit_adjustments (
+    subscription_id, owner_id, property_id, legacy_credit_before,
+    approved_amount, available_credit_after, reason, admin_id
+  ) values (
+    v_sub.id, v_sub.owner_id, v_sub.property_id, v_pending,
+    p_approved_amount, v_new_available, trim(p_reason), v_admin
+  ) returning id into v_adjustment_id;
+
+  return jsonb_build_object(
+    'success', true,
+    'adjustment_id', v_adjustment_id,
+    'approved_amount', p_approved_amount,
+    'available_credit_after', v_new_available,
+    'legacy_credit_remaining', greatest(v_pending - p_approved_amount, 0)
+  );
+end;
+$;
+revoke all on function public.review_jumaa_legacy_subscription_credit(uuid, numeric, text) from public, anon;
+grant execute on function public.review_jumaa_legacy_subscription_credit(uuid, numeric, text) to authenticated;
 
 commit;
