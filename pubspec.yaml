@@ -46,6 +46,7 @@ dependencies:
   qr_flutter: ^4.1.0
   flutter_svg: ^2.3.0
   connectivity_plus: ^7.3.1
+  local_auth: ^3.0.2
 
   material_ui: any
 dev_dependencies:
