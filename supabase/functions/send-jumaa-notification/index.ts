@@ -2,6 +2,7 @@ import { corsHeaders } from "../_shared/cors.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY");
 
 const FIREBASE_PROJECT_ID = Deno.env.get("FIREBASE_PROJECT_ID");
 const FIREBASE_CLIENT_EMAIL = Deno.env.get("FIREBASE_CLIENT_EMAIL");
@@ -289,6 +290,58 @@ Deno.serve(async (req) => {
         "Content-Type": "application/json",
       };
 
+      const notificationResponse = await fetch(
+        `${SUPABASE_URL}/rest/v1/owner_notifications?id=eq.${encodeURIComponent(ownerNotificationId)}&select=id,owner_id,title,message,notification_type`,
+        { headers: supabaseHeaders },
+      );
+      if (!notificationResponse.ok) throw new Error("Could not load owner billing notification.");
+      const notificationRows = await notificationResponse.json();
+      if (!notificationRows.length) {
+        return new Response(
+          JSON.stringify({ success: false, error: "Owner billing notification not found." }),
+          { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+      const notification = notificationRows[0];
+
+      // A user can dispatch only their own notification. Platform admins and
+      // trusted server-to-server calls may dispatch notifications for owners.
+      const authorization = req.headers.get("Authorization") ?? "";
+      const isServiceRole = authorization === `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`;
+      if (!isServiceRole) {
+        if (!SUPABASE_ANON_KEY || !authorization.startsWith("Bearer ")) {
+          return new Response(
+            JSON.stringify({ success: false, error: "Authentication is required." }),
+            { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+          );
+        }
+        const authResponse = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+          headers: { apikey: SUPABASE_ANON_KEY, Authorization: authorization },
+        });
+        if (!authResponse.ok) {
+          return new Response(
+            JSON.stringify({ success: false, error: "Your session is invalid." }),
+            { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+          );
+        }
+        const caller = await authResponse.json();
+        let authorized = caller.id === notification.owner_id;
+        if (!authorized) {
+          const callerProfileResponse = await fetch(
+            `${SUPABASE_URL}/rest/v1/profiles?id=eq.${encodeURIComponent(caller.id)}&select=role`,
+            { headers: supabaseHeaders },
+          );
+          const callerProfiles = callerProfileResponse.ok ? await callerProfileResponse.json() : [];
+          authorized = callerProfiles[0]?.role?.toString().toLowerCase() === "jumaa_owner";
+        }
+        if (!authorized) {
+          return new Response(
+            JSON.stringify({ success: false, error: "You cannot dispatch another owner's notification." }),
+            { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+          );
+        }
+      }
+
       const eventResponse = await fetch(
         `${SUPABASE_URL}/rest/v1/notification_events`,
         {
@@ -311,15 +364,6 @@ Deno.serve(async (req) => {
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
         );
       }
-
-      const notificationResponse = await fetch(
-        `${SUPABASE_URL}/rest/v1/owner_notifications?id=eq.${encodeURIComponent(ownerNotificationId)}&select=id,owner_id,title,message,notification_type`,
-        { headers: supabaseHeaders },
-      );
-      if (!notificationResponse.ok) throw new Error("Could not load owner billing notification.");
-      const notificationRows = await notificationResponse.json();
-      if (!notificationRows.length) throw new Error("Owner billing notification not found.");
-      const notification = notificationRows[0];
 
       const [profileResponse, tokenResponse] = await Promise.all([
         fetch(
@@ -377,7 +421,6 @@ Deno.serve(async (req) => {
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
-
 
 
     // Accept both direct calls and Supabase Database Webhook payloads.
