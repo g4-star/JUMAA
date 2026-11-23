@@ -17379,11 +17379,13 @@ class _PublicUserPageState extends State<PublicUserPage> {
                         final itemWidth =
                             (constraints.maxWidth - (columns - 1) * 12) /
                                 columns;
-                        final aspectRatio = itemWidth < 190
-                            ? 0.51
-                            : itemWidth < 230
-                                ? 0.58
-                                : 0.70;
+                        final aspectRatio = itemWidth < 150
+                            ? 0.37
+                            : itemWidth < 190
+                                ? 0.51
+                                : itemWidth < 230
+                                    ? 0.58
+                                    : 0.70;
 
                         return GridView.builder(
                           padding: const EdgeInsets.only(bottom: 16),
