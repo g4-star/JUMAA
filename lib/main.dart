@@ -1034,6 +1034,8 @@ class _SubscriptionsPlaceholderPageState
   bool _paying = false;
 
   Property? _property;
+  List<Property> _properties = [];
+  String? _selectedPropertyId;
   Map<String, dynamic>? _subscription;
   List<Map<String, dynamic>> _payments = [];
   String? _error;
@@ -1044,7 +1046,7 @@ class _SubscriptionsPlaceholderPageState
     _loadSubscription();
   }
 
-  Future<void> _loadSubscription() async {
+  Future<void> _loadSubscription({String? propertyId}) async {
     if (!mounted) return;
 
     setState(() {
@@ -1059,29 +1061,30 @@ class _SubscriptionsPlaceholderPageState
         throw Exception('You are not signed in.');
       }
 
-      Property? property;
+      var properties = OpenNestStore.ownerProperties
+          .where((candidate) => candidate.ownerId == user.id)
+          .toList();
 
-      for (final candidate in OpenNestStore.ownerProperties) {
-        if (candidate.ownerId == user.id) {
+      if (properties.isEmpty) {
+        await OpenNestStore.loadOwnerPropertiesFromSupabase();
+        properties = OpenNestStore.ownerProperties
+            .where((candidate) => candidate.ownerId == user.id)
+            .toList();
+      }
+
+      if (properties.isEmpty) {
+        throw Exception('No property was found for your owner account.');
+      }
+
+      final requestedPropertyId = propertyId ?? _selectedPropertyId;
+      Property? property;
+      for (final candidate in properties) {
+        if (candidate.id == requestedPropertyId) {
           property = candidate;
           break;
         }
       }
-
-      if (property == null) {
-        await OpenNestStore.loadOwnerPropertiesFromSupabase();
-
-        for (final candidate in OpenNestStore.ownerProperties) {
-          if (candidate.ownerId == user.id) {
-            property = candidate;
-            break;
-          }
-        }
-      }
-
-      if (property == null) {
-        throw Exception('No property was found for your owner account.');
-      }
+      property ??= properties.first;
 
       final response = await OpenNestStore.supabase
           .from('subscriptions')
@@ -1109,6 +1112,8 @@ class _SubscriptionsPlaceholderPageState
       if (!mounted) return;
 
       setState(() {
+        _properties = properties;
+        _selectedPropertyId = property!.id;
         _property = property;
         _subscription = Map<String, dynamic>.from(response);
         _payments = payments;
@@ -1145,6 +1150,15 @@ class _SubscriptionsPlaceholderPageState
     }
 
     return double.tryParse(value?.toString() ?? '') ?? 0;
+  }
+
+  double get _creditAmount {
+    final value = _subscription?['credit_amount'];
+    return double.tryParse(value?.toString() ?? '') ?? 0;
+  }
+
+  double get _amountDue {
+    return (_monthlyAmount - _creditAmount).clamp(0, double.infinity).toDouble();
   }
 
   String get _status {
@@ -1215,6 +1229,11 @@ class _SubscriptionsPlaceholderPageState
       return;
     }
 
+    if (_amountDue <= 0) {
+      _showMessage('Your available property credit covers the next billing period.');
+      return;
+    }
+
     final email = user.email?.trim();
 
     if (email == null || email.isEmpty) {
@@ -1235,7 +1254,7 @@ class _SubscriptionsPlaceholderPageState
         body: {
           'owner_id': user.id,
           'property_id': property.id,
-          'amount': _monthlyAmount,
+          'amount': _amountDue,
           'email': email,
         },
       );
@@ -1392,6 +1411,29 @@ class _SubscriptionsPlaceholderPageState
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.all(16),
         children: [
+          if (_properties.length > 1)
+            Card(
+              elevation: 0,
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: DropdownButtonFormField<String>(
+                  value: _selectedPropertyId,
+                  decoration: const InputDecoration(
+                    labelText: 'Choose property subscription',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: _properties.map((item) => DropdownMenuItem<String>(
+                    value: item.id,
+                    child: Text(item.name, overflow: TextOverflow.ellipsis),
+                  )).toList(),
+                  onChanged: _loading ? null : (value) {
+                    if (value != null && value != _selectedPropertyId) {
+                      _loadSubscription(propertyId: value);
+                    }
+                  },
+                ),
+              ),
+            ),
           Card(
             elevation: 0,
             child: Padding(
@@ -1483,6 +1525,23 @@ class _SubscriptionsPlaceholderPageState
 
                   const SizedBox(height: 12),
 
+                  _infoRow('Available credit', 'KES ${_creditAmount.toStringAsFixed(2)}'),
+
+                  const SizedBox(height: 12),
+
+                  _infoRow('Amount due now', 'KES ${_amountDue.toStringAsFixed(2)}'),
+
+                  const SizedBox(height: 12),
+
+                  _infoRow('Next payment date', _formatDate(subscription['next_payment_at'])),
+
+                  if (subscription['grace_until'] != null) ...[
+                    const SizedBox(height: 12),
+                    _infoRow('Approved grace until', _formatDate(subscription['grace_until'])),
+                  ],
+
+                  const SizedBox(height: 12),
+
                   _infoRow(
                     'Trial ends',
                     _formatDate(subscription['trial_ends_at']),
@@ -1521,7 +1580,7 @@ class _SubscriptionsPlaceholderPageState
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    'Pay your JUMAA subscription securely through Paystack.',
+                    'Your property credit is applied first. Pay the remaining amount securely through Paystack.',
                     style: TextStyle(color: Colors.grey.shade600),
                   ),
                   const SizedBox(height: 18),
@@ -1546,7 +1605,7 @@ class _SubscriptionsPlaceholderPageState
                           ),
                         ),
                         Text(
-                          'KES ${_monthlyAmount.toStringAsFixed(0)}',
+                          'KES ${_amountDue.toStringAsFixed(2)}',
                           style: const TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.bold,
@@ -1561,7 +1620,7 @@ class _SubscriptionsPlaceholderPageState
                   SizedBox(
                     width: double.infinity,
                     child: FilledButton.icon(
-                      onPressed: _paying || _monthlyAmount <= 0
+                      onPressed: _paying || _amountDue <= 0
                           ? null
                           : _payWithPaystack,
                       icon: _paying
@@ -1576,6 +1635,8 @@ class _SubscriptionsPlaceholderPageState
                             ? 'OPENING PAYSTACK...'
                             : _status == 'ACTIVE'
                             ? 'RENEW WITH PAYSTACK'
+                            : _amountDue <= 0
+                            ? 'CREDIT COVERS NEXT PERIOD'
                             : 'PAY WITH PAYSTACK',
                       ),
                     ),
@@ -1607,7 +1668,7 @@ class _SubscriptionsPlaceholderPageState
             ),
           ),
 
-          if (_payments.isNotEmpty) ...[
+          if (_payments.any((item) => item['status']?.toString().toLowerCase() == 'success')) ...[
             const SizedBox(height: 16),
             _buildLatestReceipt(context),
           ],
@@ -1617,6 +1678,8 @@ class _SubscriptionsPlaceholderPageState
   }
 
   String _receiptNumber(Map<String, dynamic> payment) {
+    final stored = payment['receipt_number']?.toString();
+    if (stored != null && stored.trim().isNotEmpty) return stored;
     final reference = payment['reference']?.toString() ?? '';
     final clean = reference.replaceAll(RegExp(r'[^A-Za-z0-9]'), '');
 
@@ -1662,7 +1725,11 @@ class _SubscriptionsPlaceholderPageState
   }
 
   Widget _buildLatestReceipt(BuildContext context) {
-    final payment = _payments.first;
+    final payment = _payments.firstWhere(
+      (item) => item['status']?.toString().toLowerCase() == 'success',
+      orElse: () => <String, dynamic>{},
+    );
+    if (payment.isEmpty) return const SizedBox.shrink();
 
     return Card(
       elevation: 0,
@@ -1963,6 +2030,98 @@ class _SubscriptionsPlaceholderPageState
     );
   }
 
+  Future<void> _downloadReceipt(Map<String, dynamic> payment) async {
+    if (payment['status']?.toString().toLowerCase() != 'success') {
+      _showMessage('Only verified successful payments have downloadable receipts.', isError: true);
+      return;
+    }
+
+    final document = pw.Document();
+    final receipt = _receiptNumber(payment);
+    final paidAt = _formatDateTime(payment['paid_at'] ?? payment['created_at']);
+    final periodStart = payment['period_start']?.toString() ?? '—';
+    final periodEnd = payment['period_end']?.toString() ?? '—';
+
+    document.addPage(
+      pw.Page(
+        pageFormat: PdfPageFormat.a4,
+        margin: const pw.EdgeInsets.all(36),
+        build: (context) => pw.Column(
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
+          children: [
+            pw.Center(
+              child: pw.Column(
+                children: [
+                  pw.Text('JUMAA', style: pw.TextStyle(fontSize: 26, fontWeight: pw.FontWeight.bold)),
+                  pw.SizedBox(height: 4),
+                  pw.Text('PROPERTY SUBSCRIPTION RECEIPT', style: const pw.TextStyle(fontSize: 11)),
+                  pw.SizedBox(height: 8),
+                  pw.Text('PAID', style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold)),
+                ],
+              ),
+            ),
+            pw.SizedBox(height: 28),
+            pw.Divider(),
+            pw.SizedBox(height: 14),
+            _pdfReceiptRow('Receipt number', receipt),
+            _pdfReceiptRow('Property', _property?.name ?? '—'),
+            _pdfReceiptRow('Owner email', OpenNestStore.supabase.auth.currentUser?.email ?? '—'),
+            _pdfReceiptRow('Payment date', paidAt),
+            _pdfReceiptRow('Payment method', (payment['payment_method']?.toString() ?? 'Paystack').toUpperCase()),
+            _pdfReceiptRow('Transaction reference', payment['reference']?.toString() ?? '—'),
+            _pdfReceiptRow('Units', payment['units_count']?.toString() ?? _unitCount.toString()),
+            _pdfReceiptRow('Monthly rate', 'KES ${(double.tryParse(payment['monthly_rate']?.toString() ?? '') ?? _monthlyAmount).toStringAsFixed(2)}'),
+            _pdfReceiptRow('Amount applied to subscription', 'KES ${(double.tryParse(payment['amount_applied']?.toString() ?? '') ?? _paymentAmount(payment)).toStringAsFixed(2)}'),
+            _pdfReceiptRow('Credit generated', 'KES ${(double.tryParse(payment['credit_generated']?.toString() ?? '') ?? 0).toStringAsFixed(2)}'),
+            _pdfReceiptRow('Subscription period', '$periodStart to $periodEnd'),
+            pw.SizedBox(height: 18),
+            pw.Container(
+              width: double.infinity,
+              padding: const pw.EdgeInsets.all(16),
+              decoration: pw.BoxDecoration(
+                border: pw.Border.all(color: PdfColors.grey400),
+                borderRadius: pw.BorderRadius.circular(8),
+              ),
+              child: pw.Column(
+                children: [
+                  pw.Text('TOTAL PAID', style: const pw.TextStyle(fontSize: 10)),
+                  pw.SizedBox(height: 5),
+                  pw.Text('KES ${_paymentAmount(payment).toStringAsFixed(2)}', style: pw.TextStyle(fontSize: 22, fontWeight: pw.FontWeight.bold)),
+                ],
+              ),
+            ),
+            pw.Spacer(),
+            pw.Divider(),
+            pw.Center(
+              child: pw.Text('This receipt confirms a verified JUMAA subscription payment.', style: const pw.TextStyle(fontSize: 9)),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    await Printing.sharePdf(
+      bytes: await document.save(),
+      filename: '$receipt.pdf',
+    );
+  }
+
+  pw.Widget _pdfReceiptRow(String label, String value) {
+    return pw.Padding(
+      padding: const pw.EdgeInsets.symmetric(vertical: 6),
+      child: pw.Row(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          pw.Expanded(child: pw.Text(label, style: const pw.TextStyle(fontSize: 10))),
+          pw.SizedBox(width: 12),
+          pw.Expanded(
+            child: pw.Text(value, textAlign: pw.TextAlign.right, style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _showReceipt(Map<String, dynamic> payment) {
     final amount = _paymentAmount(payment);
     final months = _paymentMonths(payment);
@@ -2151,7 +2310,7 @@ class _SubscriptionsPlaceholderPageState
                         Expanded(
                           child: _periodBox(
                             'ENDS',
-                            _formatDate(_subscription?['subscription_ends_at']),
+                            _formatDate(payment['period_end'] ?? _subscription?['subscription_ends_at']),
                           ),
                         ),
                       ],
@@ -2177,6 +2336,20 @@ class _SubscriptionsPlaceholderPageState
 
                     const SizedBox(height: 18),
 
+                    if (status == 'SUCCESS') ...[
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          onPressed: () async {
+                            Navigator.of(dialogContext).pop();
+                            await _downloadReceipt(payment);
+                          },
+                          icon: const Icon(Icons.download),
+                          label: const Text('DOWNLOAD PDF RECEIPT'),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                    ],
                     SizedBox(
                       width: double.infinity,
                       child: FilledButton.icon(
