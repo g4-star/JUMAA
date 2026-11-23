@@ -286,6 +286,96 @@ class _JumaaOwnerSubscriptionsPageState
     }
   }
 
+  Future<void> _reviewLegacyCredit(
+    Map<String, dynamic> subscription,
+    double pendingAmount,
+  ) async {
+    final amountController = TextEditingController(text: pendingAmount.toStringAsFixed(2));
+    final reasonController = TextEditingController();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Review historical credit'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('Unverified historical credit: ${_money(pendingAmount)}'),
+            const SizedBox(height: 12),
+            TextField(
+              controller: amountController,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              decoration: const InputDecoration(
+                labelText: 'Credit to approve (KES)',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: reasonController,
+              minLines: 2,
+              maxLines: 4,
+              decoration: const InputDecoration(
+                labelText: 'Review reason (required)',
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Approve credit'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) {
+      amountController.dispose();
+      reasonController.dispose();
+      return;
+    }
+
+    final amount = double.tryParse(amountController.text.trim());
+    final reason = reasonController.text.trim();
+    amountController.dispose();
+    reasonController.dispose();
+
+    if (amount == null || amount < 0 || amount > pendingAmount || reason.length < 5) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Enter a valid amount within the pending credit and a reason of at least five characters.')),
+        );
+      }
+      return;
+    }
+
+    try {
+      await _supabase.rpc(
+        'review_jumaa_legacy_subscription_credit',
+        params: {
+          'p_subscription_id': subscription['id'],
+          'p_approved_amount': amount,
+          'p_reason': reason,
+        },
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Legacy credit review recorded.')),
+      );
+      await _load();
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not approve credit: $error'), backgroundColor: Colors.red),
+      );
+    }
+  }
+
   Widget _subscriptionCard(Map<String, dynamic> row) {
     final propertyId = row['property_id']?.toString() ?? '';
     final ownerId = row['owner_id']?.toString() ?? '';
@@ -331,9 +421,32 @@ class _JumaaOwnerSubscriptionsPageState
             _detail('Next due date', _date(row['next_payment_at'])),
             if (row['grace_until'] != null)
               _detail('Approved grace until', _date(row['grace_until'])),
-            _detail('Available credit', _money(row['credit_amount'])),
+            _detail('Available credit', _money(row['available_credit_amount'])),
+            _detail(
+              'Legacy credit awaiting review',
+              _money(
+                (double.tryParse(row['legacy_credit_amount']?.toString() ?? '') ?? 0) -
+                (double.tryParse(row['legacy_credit_reviewed_amount']?.toString() ?? '') ?? 0),
+              ),
+            ),
             _detail('Outstanding balance', _money(row['outstanding_balance'])),
             const SizedBox(height: 12),
+            if ((double.tryParse(row['legacy_credit_amount']?.toString() ?? '') ?? 0) >
+                (double.tryParse(row['legacy_credit_reviewed_amount']?.toString() ?? '') ?? 0)) ...[
+              const SizedBox(height: 8),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: () => _reviewLegacyCredit(
+                    row,
+                    (double.tryParse(row['legacy_credit_amount']?.toString() ?? '') ?? 0) -
+                        (double.tryParse(row['legacy_credit_reviewed_amount']?.toString() ?? '') ?? 0),
+                  ),
+                  icon: const Icon(Icons.fact_check_outlined),
+                  label: const Text('REVIEW LEGACY CREDIT'),
+                ),
+              ),
+            ],
             SizedBox(
               width: double.infinity,
               child: OutlinedButton.icon(
