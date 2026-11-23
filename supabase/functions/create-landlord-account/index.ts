@@ -101,6 +101,44 @@ Deno.serve(async (req) => {
     }
 
     // ----------------------------------------------------------
+    // Ensure each phone number identifies one account. The lookup
+    // normalizes common Kenyan formats (07..., 7..., +254...).
+    const phoneLookupResponse = await fetch(
+      `${SUPABASE_URL}/rest/v1/rpc/lookup_jumaa_login_profile_by_phone`,
+      {
+        method: 'POST',
+        headers: {
+          apikey: SUPABASE_SERVICE_ROLE_KEY,
+          Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ p_phone: body.phone }),
+      },
+    );
+
+    if (!phoneLookupResponse.ok) {
+      throw new Error('Could not verify whether the phone number is already registered.');
+    }
+
+    const phoneMatches = await phoneLookupResponse.json();
+    if (Array.isArray(phoneMatches) && phoneMatches.length > 0) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: 'This phone number is already registered to another JUMAA account.',
+          existing: true,
+        }),
+        {
+          status: 409,
+          headers: {
+            ...corsHeaders,
+            'Content-Type': 'application/json',
+          },
+        },
+      );
+    }
+
+    // ----------------------------------------------------------
     // 2. Generate the REAL temporary Supabase Auth password.
     // ----------------------------------------------------------
     const temporaryPassword =
