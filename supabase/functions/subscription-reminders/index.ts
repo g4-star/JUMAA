@@ -151,19 +151,15 @@ Deno.serve(async (req: Request) => {
     const results = [];
 
     for (const event of events) {
-      const attemptResponse = await db(
-        `subscription_reminder_events?id=eq.${encodeURIComponent(event.id)}`,
-        {
-          method: "PATCH",
-          headers: { Prefer: "return=minimal" },
-          body: JSON.stringify({
-            status: "processing",
-            attempts: Number(event.attempts ?? 0) + 1,
-            last_error: null,
-          }),
-        },
-      );
-      if (!attemptResponse.ok) continue;
+      const claimResponse = await db("rpc/claim_jumaa_subscription_reminder", {
+        method: "POST",
+        body: JSON.stringify({ p_event_id: event.id }),
+      });
+      if (!claimResponse.ok) {
+        console.error("Could not claim reminder event:", await claimResponse.text());
+        continue;
+      }
+      if (await claimResponse.json() !== true) continue;
 
       try {
         const [profileResponse, propertyResponse] = await Promise.all([
@@ -257,6 +253,7 @@ Deno.serve(async (req: Request) => {
             email_sent_at: emailSentAt,
             status: complete ? "sent" : "failed",
             sent_at: complete ? new Date().toISOString() : null,
+            locked_at: null,
             last_error: null,
           }),
         });
@@ -267,7 +264,7 @@ Deno.serve(async (req: Request) => {
         await db(`subscription_reminder_events?id=eq.${encodeURIComponent(event.id)}`, {
           method: "PATCH",
           headers: { Prefer: "return=minimal" },
-          body: JSON.stringify({ status: "failed", last_error: message }),
+          body: JSON.stringify({ status: "failed", locked_at: null, last_error: message }),
         });
         results.push({ id: event.id, status: "failed", error: message });
       }
