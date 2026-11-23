@@ -12,6 +12,12 @@ alter table public.subscriptions
   add column if not exists credit_amount numeric(12,2) not null default 0,
   add column if not exists billing_timezone text not null default 'Africa/Nairobi';
 
+alter table public.owner_notifications
+  add column if not exists billing_event_id uuid;
+create unique index if not exists owner_notifications_billing_event_unique
+  on public.owner_notifications(billing_event_id)
+  where billing_event_id is not null;
+
 alter table public.subscription_payments
   add column if not exists amount_applied numeric(12,2) not null default 0,
   add column if not exists balance_after numeric(12,2) not null default 0,
