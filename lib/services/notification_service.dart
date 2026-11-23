@@ -77,6 +77,10 @@ class NotificationService {
   }
 
   Future<void> _showForegroundNotification(RemoteMessage message) async {
+    // iOS foreground presentation is handled by Firebase's native presentation
+    // options above. Android needs a local notification while the app is open.
+    if (kIsWeb || Platform.isIOS) return;
+
     final notification = message.notification;
     if (notification == null) return;
 
