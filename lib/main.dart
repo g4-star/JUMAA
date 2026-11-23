@@ -10,6 +10,9 @@ import 'package:firebase_core/firebase_core.dart';
 import 'dart:io';
 
 import 'package:material_ui/material_ui.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
 
 import 'services/jumaa_connectivity_service.dart';
 
