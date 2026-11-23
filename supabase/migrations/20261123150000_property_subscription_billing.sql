@@ -25,6 +25,34 @@ alter table public.subscription_payments
   add column if not exists period_end date,
   add column if not exists receipt_number text;
 
+
+alter table public.subscriptions enable row level security;
+
+drop policy if exists "JUMAA admins can view all subscriptions"
+  on public.subscriptions;
+create policy "JUMAA admins can view all subscriptions"
+on public.subscriptions
+for select to authenticated
+using (exists (
+  select 1 from public.profiles p
+  where p.id = (select auth.uid())
+    and lower(coalesce(p.role, '')) = 'jumaa_owner'
+));
+
+drop policy if exists "Property owners can view their subscriptions"
+  on public.subscriptions;
+create policy "Property owners can view their subscriptions"
+on public.subscriptions
+for select to authenticated
+using (
+  owner_id = (select auth.uid())
+  and exists (
+    select 1 from public.profiles p
+    where p.id = (select auth.uid())
+      and lower(coalesce(p.role, '')) in ('owner', 'jumaa_owner')
+  )
+);
+
 create table if not exists public.subscription_reschedules (
   id uuid primary key default gen_random_uuid(),
   subscription_id uuid not null references public.subscriptions(id) on delete restrict,
