@@ -140,6 +140,29 @@ Deno.serve(async (req: Request) => {
     if (!email) return jsonResponse({ success: false, error: "Your account needs a valid email address for Paystack." }, 400);
 
     const reference = `JUMAA-${crypto.randomUUID().replaceAll("-", "")}`;
+    const insertResponse = await adminFetch("subscription_payments", {
+      method: "POST",
+      headers: { Prefer: "return=representation" },
+      body: JSON.stringify({
+        owner_id: ownerId,
+        property_id: propertyId,
+        subscription_id: subscription.id,
+        amount,
+        monthly_rate: monthlyRate,
+        units_count: unitCount,
+        months_covered: 0,
+        amount_applied: 0,
+        credit_generated: 0,
+        payment_method: "paystack",
+        reference,
+        status: "pending",
+      }),
+    });
+    if (!insertResponse.ok) {
+      console.error("Could not persist pending payment:", await insertResponse.text());
+      return jsonResponse({ success: false, error: "Payment could not be safely recorded. Please try again." }, 500);
+    }
+
     const paystackResponse = await fetch("https://api.paystack.co/transaction/initialize", {
       method: "POST",
       headers: { Authorization: `Bearer ${PAYSTACK_SECRET_KEY}`, "Content-Type": "application/json" },
@@ -165,30 +188,12 @@ Deno.serve(async (req: Request) => {
     const paystack = await paystackResponse.json();
     if (!paystackResponse.ok || !paystack?.status || !paystack?.data?.authorization_url) {
       console.error("Paystack initialization failed:", paystack?.message ?? "Unknown error");
+      await adminFetch(`subscription_payments?reference=eq.${encodeURIComponent(reference)}`, {
+        method: "PATCH",
+        headers: { Prefer: "return=minimal" },
+        body: JSON.stringify({ status: "failed" }),
+      });
       return jsonResponse({ success: false, error: paystack?.message ?? "Could not initialize Paystack payment." }, 400);
-    }
-
-    const insertResponse = await adminFetch("subscription_payments", {
-      method: "POST",
-      headers: { Prefer: "return=representation" },
-      body: JSON.stringify({
-        owner_id: ownerId,
-        property_id: propertyId,
-        subscription_id: subscription.id,
-        amount,
-        monthly_rate: monthlyRate,
-        units_count: unitCount,
-        months_covered: 0,
-        amount_applied: 0,
-        credit_generated: 0,
-        payment_method: "paystack",
-        reference,
-        status: "pending",
-      }),
-    });
-    if (!insertResponse.ok) {
-      console.error("Could not persist pending payment:", await insertResponse.text());
-      return jsonResponse({ success: false, error: "Payment could not be safely recorded. Please try again." }, 500);
     }
 
     // Keep the subscription's pricing snapshot in sync with the actual units.
