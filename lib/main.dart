@@ -18081,7 +18081,7 @@ class _JUMAALoginPageState extends State<JUMAALoginPage> {
         final prefs = await SharedPreferences.getInstance();
 
         await prefs.setBool('jumaa_logged_in', true);
-        await prefs.setString('jumaa_logged_in_email', email);
+        await prefs.setString('jumaa_logged_in_email', user.email ?? identifier);
         await prefs.setString('jumaa_logged_in_role', 'tenant');
 
         if (!mounted) return;
@@ -18109,7 +18109,7 @@ class _JUMAALoginPageState extends State<JUMAALoginPage> {
 
         final prefs = await SharedPreferences.getInstance();
         await prefs.setBool('jumaa_logged_in', true);
-        await prefs.setString('jumaa_logged_in_email', email);
+        await prefs.setString('jumaa_logged_in_email', user.email ?? identifier);
         await prefs.setString('jumaa_logged_in_role', 'jumaa_owner');
 
         if (!mounted) return;
@@ -18134,7 +18134,7 @@ class _JUMAALoginPageState extends State<JUMAALoginPage> {
         final prefs = await SharedPreferences.getInstance();
 
         await prefs.setBool('jumaa_logged_in', true);
-        await prefs.setString('jumaa_logged_in_email', email);
+        await prefs.setString('jumaa_logged_in_email', user.email ?? identifier);
         await prefs.setString('jumaa_logged_in_role', 'owner');
 
         if (!mounted) return;
