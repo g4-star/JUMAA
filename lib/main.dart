@@ -1156,8 +1156,14 @@ class _SubscriptionsPlaceholderPageState
   }
 
   double get _creditAmount {
-    final value = _subscription?['credit_amount'];
+    final value = _subscription?['available_credit_amount'];
     return double.tryParse(value?.toString() ?? '') ?? 0;
+  }
+
+  double get _legacyCreditAmount {
+    final legacy = double.tryParse(_subscription?['legacy_credit_amount']?.toString() ?? '') ?? 0;
+    final reviewed = double.tryParse(_subscription?['legacy_credit_reviewed_amount']?.toString() ?? '') ?? 0;
+    return (legacy - reviewed).clamp(0, double.infinity).toDouble();
   }
 
   double get _amountDue {
@@ -1529,6 +1535,11 @@ class _SubscriptionsPlaceholderPageState
                   const SizedBox(height: 12),
 
                   _infoRow('Available credit', 'KES ${_creditAmount.toStringAsFixed(2)}'),
+
+                  if (_legacyCreditAmount > 0) ...[
+                    const SizedBox(height: 12),
+                    _infoRow('Legacy credit awaiting review', 'KES ${_legacyCreditAmount.toStringAsFixed(2)}'),
+                  ],
 
                   const SizedBox(height: 12),
 
