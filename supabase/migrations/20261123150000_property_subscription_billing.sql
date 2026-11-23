@@ -87,7 +87,10 @@ $$;
 
 -- Called only by property/unit triggers. It deliberately derives ownership
 -- from properties.owner_id and verifies that the profile is an owner.
-create or replace function public.ensure_jumaa_property_subscription(p_property_id uuid)
+create or replace function public.ensure_jumaa_property_subscription(
+  p_property_id uuid,
+  p_trial_start timestamptz default null
+)
 returns void
 language plpgsql
 security definer
@@ -99,6 +102,7 @@ declare
   v_units integer;
   v_rate numeric(12,2);
   v_now timestamptz := now();
+  v_trial_start timestamptz := coalesce(p_trial_start, now());
 begin
   select * into v_property
   from public.properties
@@ -135,20 +139,20 @@ begin
     update public.subscriptions
     set unit_count = v_units,
         monthly_amount = v_rate,
-        trial_started_at = coalesce(trial_started_at, created_at, v_property.created_at, v_now),
+        trial_started_at = coalesce(trial_started_at, created_at, v_trial_start),
         trial_ends_at = coalesce(
           trial_ends_at,
-          coalesce(trial_started_at, created_at, v_property.created_at, v_now) + interval '30 days'
+          coalesce(trial_started_at, created_at, v_trial_start) + interval '30 days'
         ),
         billing_anchor_date = coalesce(
           billing_anchor_date,
-          (coalesce(trial_ends_at, v_property.created_at + interval '30 days'))::date
+          (coalesce(trial_ends_at, v_trial_start + interval '30 days'))::date
         ),
         next_payment_at = coalesce(
           next_payment_at,
           trial_ends_at,
           subscription_ends_at,
-          v_property.created_at + interval '30 days'
+          v_trial_start + interval '30 days'
         ),
         updated_at = v_now
     where id = v_subscription.id;
@@ -174,10 +178,10 @@ begin
       v_rate,
       v_units,
       'trial',
-      coalesce(v_property.created_at, v_now),
-      coalesce(v_property.created_at, v_now) + interval '30 days',
-      (coalesce(v_property.created_at, v_now) + interval '30 days')::date,
-      coalesce(v_property.created_at, v_now) + interval '30 days',
+      v_trial_start,
+      v_trial_start + interval '30 days',
+      (v_trial_start + interval '30 days')::date,
+      v_trial_start + interval '30 days',
       0,
       0,
       'Africa/Nairobi',
@@ -188,7 +192,7 @@ begin
 end;
 $$;
 
-revoke all on function public.ensure_jumaa_property_subscription(uuid) from public, anon, authenticated;
+revoke all on function public.ensure_jumaa_property_subscription(uuid, timestamptz) from public, anon, authenticated;
 
 create or replace function public.jumaa_property_subscription_trigger()
 returns trigger
@@ -198,11 +202,11 @@ set search_path = public, pg_temp
 as $$
 begin
   if tg_table_name = 'properties' then
-    perform public.ensure_jumaa_property_subscription(new.id);
+    perform public.ensure_jumaa_property_subscription(new.id, coalesce(new.created_at, now()));
   elsif tg_op = 'DELETE' then
-    perform public.ensure_jumaa_property_subscription(old.property_id);
+    perform public.ensure_jumaa_property_subscription(old.property_id, null);
   else
-    perform public.ensure_jumaa_property_subscription(new.property_id);
+    perform public.ensure_jumaa_property_subscription(new.property_id, null);
     if tg_op = 'UPDATE' and old.property_id is distinct from new.property_id then
       perform public.ensure_jumaa_property_subscription(old.property_id);
     end if;
@@ -244,7 +248,7 @@ begin
         select 1 from public.subscription_payments sp where sp.property_id = p.id
       )
   loop
-    perform public.ensure_jumaa_property_subscription(r.id);
+    perform public.ensure_jumaa_property_subscription(r.id, now());
   end loop;
 end;
 $$;
