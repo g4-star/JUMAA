@@ -201,9 +201,12 @@ begin
       perform public.ensure_jumaa_property_subscription(old.property_id);
     end if;
   end if;
-  return coalesce(new, old);
+  if tg_op = 'DELETE' then
+    return old;
+  end if;
+  return new;
 end;
-$$;
+$;
 
 revoke all on function public.jumaa_property_subscription_trigger() from public, anon, authenticated;
 
@@ -369,7 +372,7 @@ declare
   v_now timestamptz := now();
   v_receipt text;
 begin
-  if current_user <> 'service_role' then
+  if coalesce(current_setting('request.jwt.claim.role', true), '') <> 'service_role' then
     raise exception 'This operation is restricted to the payment service.';
   end if;
 
