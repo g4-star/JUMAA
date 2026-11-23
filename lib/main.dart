@@ -246,8 +246,14 @@ class _ApartmentAppState extends State<ApartmentApp> {
     super.initState();
 
     _authSubscription = Supabase.instance.client.auth.onAuthStateChange
-        .listen((_) {
+        .listen((authState) {
       _loadThemeMode();
+
+      if (authState.event == AuthChangeEvent.signedIn) {
+        // Ask for push permission after an account signs in, then bind
+        // this device token to that authenticated JUMAA account.
+        NotificationService.instance.registerCurrentDevice();
+      }
     });
 
     _loadThemeMode();
