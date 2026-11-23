@@ -355,7 +355,7 @@ class _JumaaOwnerSubscriptionsPageState
     }
 
     try {
-      await _supabase.rpc(
+      final result = await _supabase.rpc(
         'review_jumaa_legacy_subscription_credit',
         params: {
           'p_subscription_id': subscription['id'],
@@ -363,6 +363,19 @@ class _JumaaOwnerSubscriptionsPageState
           'p_reason': reason,
         },
       );
+      final notificationId = result is Map
+          ? result['notification_id']?.toString()
+          : null;
+      if (notificationId != null && notificationId.isNotEmpty) {
+        try {
+          await _supabase.functions.invoke(
+            'send-jumaa-notification',
+            body: {'owner_notification_id': notificationId},
+          );
+        } catch (notificationError) {
+          debugPrint('Legacy credit review notification failed: $notificationError');
+        }
+      }
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Legacy credit review recorded.')),
