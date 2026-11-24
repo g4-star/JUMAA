@@ -234,7 +234,6 @@ class _TenantRentCollectionPageState extends State<TenantRentCollectionPage> {
     final till = account['mpesa_till']?.toString();
     final bankNumber = account['bank_account_number']?.toString();
     final isPaybill = paybill != null && paybill.isNotEmpty;
-    final isTill = till != null && till.isNotEmpty;
     final destinationNumber = isPaybill ? paybill : till;
     return Card(child: Padding(
       padding: const EdgeInsets.all(16),
