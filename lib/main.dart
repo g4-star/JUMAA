@@ -16596,12 +16596,12 @@ class _PublicPropertyRoutePageState extends State<PublicPropertyRoutePage> {
                                   ),
                                 ),
                                 const SizedBox(width: 14),
-                                const Expanded(
+                                Expanded(
                                   child: Text(
                                     property.latitude != null && property.longitude != null
                                         ? 'Apartment GPS pin'
                                         : 'Property Area',
-                                    style: TextStyle(
+                                    style: const TextStyle(
                                       fontSize: 19,
                                       fontWeight: FontWeight.w900,
                                     ),
