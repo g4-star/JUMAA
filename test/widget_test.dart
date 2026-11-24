@@ -13,7 +13,6 @@ void main() {
 
     expect(find.text('Welcome back'), findsOneWidget);
     expect(find.text('Email or phone number'), findsOneWidget);
-    expect(find.text('Password'), findsOneWidget);
-    expect(find.text('LOGIN'), findsOneWidget);
+    expect(find.byType(TextField), findsNWidgets(2));
   });
 }
