@@ -29,6 +29,33 @@ Deno.serve(async (req) => {
   }
 
   try {
+    if (req.method !== 'POST') {
+      return new Response(JSON.stringify({ success: false, error: 'Method not allowed.' }), {
+        status: 405, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const authorization = req.headers.get('Authorization') ?? '';
+    if (!authorization.startsWith('Bearer ')) {
+      return new Response(JSON.stringify({ success: false, error: 'Authentication required.' }), {
+        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+    const callerResponse = await fetch(SUPABASE_URL + '/auth/v1/user', {
+      headers: { apikey: SUPABASE_SERVICE_ROLE_KEY, Authorization: authorization },
+    });
+    if (!callerResponse.ok) {
+      return new Response(JSON.stringify({ success: false, error: 'Authentication required.' }), {
+        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+    const caller = await callerResponse.json();
+    if (typeof caller?.id !== 'string' || !caller.id) {
+      return new Response(JSON.stringify({ success: false, error: 'Authentication required.' }), {
+        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+  try {
     if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
       throw new Error('Supabase service credentials are not configured.');
     }
@@ -63,6 +90,28 @@ Deno.serve(async (req) => {
     }
 
     const email = body.email.trim().toLowerCase();
+
+    // Only the registered property owner may create and assign its landlord.
+    const callerProfileResponse = await fetch(
+      SUPABASE_URL + '/rest/v1/profiles?id=eq.' + encodeURIComponent(caller.id) + '&select=id,role',
+      { headers: { apikey: SUPABASE_SERVICE_ROLE_KEY, Authorization: 'Bearer ' + SUPABASE_SERVICE_ROLE_KEY } },
+    );
+    if (!callerProfileResponse.ok) throw new Error('Could not verify account permissions.');
+    const callerProfiles = await callerProfileResponse.json();
+    const callerRole = Array.isArray(callerProfiles) ? callerProfiles[0]?.role?.toString().toLowerCase() : null;
+
+    const propertyAccessResponse = await fetch(
+      SUPABASE_URL + '/rest/v1/properties?id=eq.' + encodeURIComponent(body.property_id) + '&select=id,owner_id,name',
+      { headers: { apikey: SUPABASE_SERVICE_ROLE_KEY, Authorization: 'Bearer ' + SUPABASE_SERVICE_ROLE_KEY } },
+    );
+    if (!propertyAccessResponse.ok) throw new Error('Could not verify property ownership.');
+    const accessibleProperties = await propertyAccessResponse.json();
+    const ownedProperty = Array.isArray(accessibleProperties) ? accessibleProperties[0] : null;
+    if (callerRole !== 'owner' || ownedProperty?.owner_id !== caller.id) {
+      return new Response(JSON.stringify({ success: false, error: 'Only the owner of this property can assign its landlord.' }), {
+        status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }    const email = body.email.trim().toLowerCase();
 
     // ----------------------------------------------------------
     // 1. Check whether this email already has a profile.
