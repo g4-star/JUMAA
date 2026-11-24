@@ -238,7 +238,7 @@ class _TenantRentCollectionPageState extends State<TenantRentCollectionPage> {
         const SizedBox(height: 8),
         if (isPaybill || isTill) ...[
           Text(isPaybill ? 'M-Pesa Paybill' : 'M-Pesa Till', style: const TextStyle(color: Colors.black54)),
-          SelectableText(isPaybill ? paybill! : till!, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800, letterSpacing: 1)),
+          SelectableText(isPaybill ? paybill : till, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800, letterSpacing: 1)),
           if (isPaybill && (account['mpesa_account_reference']?.toString().isNotEmpty ?? false))
             _instruction('Account number', account['mpesa_account_reference'].toString()),
         ] else if (bankNumber != null && bankNumber.isNotEmpty) ...[
