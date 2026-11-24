@@ -4,10 +4,11 @@
 Rent collection uses its own `rent_payment_records` ledger and is intentionally isolated from `subscription_payments` (JUMAA's platform subscription billing). Rent is owed to the landlord/designated property account, not to JUMAA.
 
 ## Current implementation
-- Property-level collection instructions support landlord-owned M-Pesa Paybill/Till and bank accounts.
+- Version 1 allows exactly one active collection destination per apartment: either one M-Pesa Paybill, one M-Pesa Till, or one bank account. The owner/landlord selects the destination type and configures only that destination; saving clears the other destination fields.
+- The active apartment destination is displayed prominently on every assigned tenant's Pay Rent screen, even before the tenant creates a payment intent.
 - Tenant payment intent is authenticated against the Supabase session and resolved from `tenants.auth_user_id`; client-supplied tenant/property/unit IDs are ignored.
 - Payment intent creates a unique `JMR-` reference and returns the selected property's instructions. Existing property M-Pesa Paybill/Till settings are copied into the collection-account table by the migration when present.
-- Authorized property managers can configure the property's M-Pesa Paybill/Till and bank destination from the landlord Payments screen.
+- Authorized property managers configure the apartment's single destination from the landlord Payments screen. No owner API keys or callback URLs are required in Version 1.
 - Tenants can submit the M-Pesa receipt or bank transaction reference; assigned landlords/property owners can reconcile it after checking the actual account statement.
 - Monthly rent charges can be generated per active tenant from the assigned unit's `monthly_rent`, using the recorded tenant move-in month to avoid charging before move-in.
 - Verified payments are allocated oldest-due-first across monthly charges. Partial payments reduce the oldest balance; excess remains as tenant credit and is applied to later charges.
@@ -17,6 +18,16 @@ Rent collection uses its own `rent_payment_records` ledger and is intentionally 
 - Tenant RLS permits reading only their own rent payment history and their assigned property's active collection instructions.
 - Creating an intent never marks rent as paid. Records remain `pending` or `submitted` until an authorized landlord/property owner reconciliation confirms settlement.
 - No credentials, passkeys, bank API keys, or service-role secrets belong in Flutter.
+
+## Version 1 payment flow
+1. The property owner/assigned landlord selects Paybill, Till, or bank account and saves exactly one destination.
+2. Every tenant assigned to that property sees the same active destination in their Pay Rent screen.
+3. The tenant makes the transfer in M-Pesa or their bank app, outside JUMAA.
+4. The tenant creates a JUMAA payment record and submits the transaction receipt/reference.
+5. The owner/landlord checks the actual destination account statement and verifies or rejects the submitted reference.
+6. Only verified payments are allocated to rent charges and receipted.
+
+Version 1 is manual payment and reconciliation. It does not send STK Push prompts. Automated multi-merchant STK Push, provider callbacks and bank integrations are explicitly deferred to Version 2.
 
 ## Provider / settlement requirements before live payments
 A standard M-Pesa STK Push targets the shortcode configured for the Daraja request; it does not automatically split funds to an arbitrary landlord. Direct landlord settlement requires one of:
