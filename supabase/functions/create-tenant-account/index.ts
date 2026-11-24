@@ -55,7 +55,7 @@ Deno.serve(async (req) => {
         status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
-  try {
+
     if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
       throw new Error('Supabase service credentials are not configured.');
     }
@@ -149,7 +149,8 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ success: false, error: 'You are not allowed to create tenant accounts for this property.' }), {
         status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
-    }    const tenant = tenants[0];
+    }
+
 
     // ----------------------------------------------------------
     // 2. Check whether a profile already exists.
