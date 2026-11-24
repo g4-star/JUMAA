@@ -337,6 +337,9 @@ class _ApartmentAppState extends State<ApartmentApp> {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'JUMAA',
+      routes: {
+        '/welcome': (_) => const JUMAAWelcomePage(),
+      },
       themeMode: _themeMode,
       theme: ThemeData(
         useMaterial3: true,
@@ -990,18 +993,33 @@ class _DashboardPageState extends State<DashboardPage> {
       );
     }
 
-    return Scaffold(
+    return PopScope<Object?>(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        if (currentIndex != 0) {
+          _selectPage(0);
+        } else {
+          ScaffoldMessenger.of(context)
+            ..hideCurrentSnackBar()
+            ..showSnackBar(
+              const SnackBar(content: Text('You are already on your JUMAA home dashboard.')),
+            );
+        }
+      },
+      child: Scaffold(
       body: IndexedStack(index: currentIndex, children: pages),
       bottomNavigationBar: NavigationBarTheme(
         data: const NavigationBarThemeData(
-          height: 42,
+          height: 64,
           labelTextStyle: WidgetStatePropertyAll(
-            TextStyle(fontSize: 6, height: 0.8),
+            TextStyle(fontSize: 10, height: 1.0),
           ),
-          iconTheme: WidgetStatePropertyAll(IconThemeData(size: 11)),
+          iconTheme: WidgetStatePropertyAll(IconThemeData(size: 20)),
         ),
         child: NavigationBar(
-          height: 42,
+          height: 64,
+          labelBehavior: NavigationDestinationLabelBehavior.onlyShowSelected,
           selectedIndex: currentIndex,
           onDestinationSelected: _selectPage,
           destinations: const [
@@ -1047,6 +1065,7 @@ class _DashboardPageState extends State<DashboardPage> {
             ),
           ],
         ),
+      ),
       ),
     );
   }
@@ -9642,7 +9661,21 @@ class _TenantDashboardPageState extends State<TenantDashboardPage> {
       ),
     ];
 
-    return Scaffold(
+    return PopScope<Object?>(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        if (currentIndex != 0) {
+          setState(() => currentIndex = 0);
+        } else {
+          ScaffoldMessenger.of(context)
+            ..hideCurrentSnackBar()
+            ..showSnackBar(
+              const SnackBar(content: Text('You are already on your home dashboard.')),
+            );
+        }
+      },
+      child: Scaffold(
       body: IndexedStack(index: currentIndex, children: pages),
       bottomNavigationBar: NavigationBarTheme(
         data: const NavigationBarThemeData(
@@ -9688,6 +9721,7 @@ class _TenantDashboardPageState extends State<TenantDashboardPage> {
             ),
           ],
         ),
+      ),
       ),
     );
   }
@@ -14498,6 +14532,9 @@ class _RegisterApartmentPageState extends State<RegisterApartmentPage> {
   String? _selectedCounty;
   String? _selectedSubcounty;
   String? _selectedArea;
+  double? _latitude;
+  double? _longitude;
+  bool _isGettingLocation = false;
 
   static const Map<String, Map<String, List<String>>> _kenyaLocations = {
     'Baringo': {
@@ -14924,6 +14961,67 @@ class _RegisterApartmentPageState extends State<RegisterApartmentPage> {
     return _kenyaLocations[_selectedCounty!]![_selectedSubcounty!] ?? [];
   }
 
+  Future<void> _capturePropertyLocation() async {
+    if (_isGettingLocation) return;
+    setState(() => _isGettingLocation = true);
+
+    try {
+      if (!await Geolocator.isLocationServiceEnabled()) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Turn on GPS/location services and try again.')),
+        );
+        return;
+      }
+
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await JumaaPermissionService.instance.requestLocation();
+      }
+
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              permission == LocationPermission.deniedForever
+                  ? 'Location permission is blocked. Enable it in app settings.'
+                  : 'Location permission is needed to save the apartment pin.',
+            ),
+            action: permission == LocationPermission.deniedForever
+                ? SnackBarAction(
+                    label: 'Settings',
+                    onPressed: () => JumaaPermissionService.instance.openSettings(),
+                  )
+                : null,
+          ),
+        );
+        return;
+      }
+
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
+      );
+
+      if (!mounted) return;
+      setState(() {
+        _latitude = position.latitude;
+        _longitude = position.longitude;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Apartment GPS location captured.')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not capture apartment location: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _isGettingLocation = false);
+    }
+  }
+
   bool _obscurePassword = true;
   bool _isCreating = false;
   bool _acceptedTerms = false;
@@ -15041,6 +15139,8 @@ class _RegisterApartmentPageState extends State<RegisterApartmentPage> {
             'subcounty': _selectedSubcounty!,
             'location': location,
             'address': address,
+            'latitude': _latitude,
+            'longitude': _longitude,
             'description': '',
             'payment_method': 'till',
             'mpesa_till_number': '',
@@ -15626,6 +15726,33 @@ class _RegisterApartmentPageState extends State<RegisterApartmentPage> {
                 return null;
               },
             ),
+
+            const SizedBox(height: 12),
+            OutlinedButton.icon(
+              onPressed: _isGettingLocation ? null : _capturePropertyLocation,
+              icon: _isGettingLocation
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.my_location_rounded),
+              label: Text(
+                _isGettingLocation
+                    ? 'Capturing apartment GPS...'
+                    : _latitude == null
+                        ? 'Pin apartment location with GPS'
+                        : 'Apartment GPS captured • Update pin',
+              ),
+            ),
+            if (_latitude != null && _longitude != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text(
+                  'Map pin: ${_latitude!.toStringAsFixed(6)}, ${_longitude!.toStringAsFixed(6)}',
+                  style: const TextStyle(fontSize: 12, color: Color(0xFF0B3D2E)),
+                ),
+              ),
 
             const SizedBox(height: 18),
 
@@ -18176,7 +18303,8 @@ class _JUMAALoginPageState extends State<JUMAALoginPage> {
 
   Future<void> _login() async {
     final identifier = _emailController.text.trim();
-    final password = _passwordController.text.trim();
+    // Passwords are not trimmed: leading/trailing spaces may be intentional.
+    final password = _passwordController.text;
 
     if (identifier.isEmpty || password.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
