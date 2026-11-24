@@ -101,3 +101,13 @@ from public.properties p
 where nullif(trim(coalesce(p.mpesa_paybill_number, '')), '') is not null
    or nullif(trim(coalesce(p.mpesa_till_number, '')), '') is not null
 on conflict (property_id) do nothing;
+
+-- Assigned landlord and property owner can review their property's rent ledger.
+drop policy if exists "Property managers read property rent payments" on public.rent_payment_records;
+create policy "Property managers read property rent payments"
+  on public.rent_payment_records for select to authenticated
+  using (exists (
+    select 1 from public.properties p
+    where p.id = rent_payment_records.property_id
+      and (p.owner_id = (select auth.uid()) or p.landlord_id = (select auth.uid()))
+  ));
