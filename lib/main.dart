@@ -17744,10 +17744,12 @@ class _PublicUserPageState extends State<PublicUserPage> {
                     Expanded(
                       child: Text(
                         property.name,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: compact ? 15 : 20,
                           fontWeight: FontWeight.bold,
                         ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
 
@@ -17801,7 +17803,12 @@ class _PublicUserPageState extends State<PublicUserPage> {
                             : property.address.isNotEmpty
                             ? property.address
                             : 'Location not provided',
-                        style: TextStyle(color: Colors.black54, fontSize: compact ? 11 : 14),
+                        style: TextStyle(
+                          color: Colors.black54,
+                          fontSize: compact ? 11 : 14,
+                        ),
+                        maxLines: compact ? 2 : 3,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
                   ],
@@ -17876,7 +17883,7 @@ class _PublicUserPageState extends State<PublicUserPage> {
                               listing.isLiked
                                   ? Icons.favorite
                                   : Icons.favorite_border,
-                              size: 21,
+                              size: compact ? 17 : 21,
                               color: listing.isLiked
                                   ? Colors.red
                                   : Colors.grey.shade700,
