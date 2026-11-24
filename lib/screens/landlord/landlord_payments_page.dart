@@ -3,14 +3,23 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../models/landlord.dart';
 
 class LandlordPaymentsPage extends StatefulWidget {
-  final Landlord landlord;
-  const LandlordPaymentsPage({super.key, required this.landlord});
+  final Landlord? landlord;
+  final String? propertyId;
+  final String? propertyName;
+  const LandlordPaymentsPage({
+    super.key,
+    this.landlord,
+    this.propertyId,
+    this.propertyName,
+  }) : assert(landlord != null || propertyId != null);
 
   @override
   State<LandlordPaymentsPage> createState() => _LandlordPaymentsPageState();
 }
 
 class _LandlordPaymentsPageState extends State<LandlordPaymentsPage> {
+  String get _propertyId => widget.landlord?.propertyId ?? widget.propertyId ?? '';
+  String get _propertyName => widget.landlord?.propertyName ?? widget.propertyName ?? 'Property';
   final _client = Supabase.instance.client;
   final _paybill = TextEditingController();
   final _till = TextEditingController();
@@ -51,7 +60,7 @@ class _LandlordPaymentsPageState extends State<LandlordPaymentsPage> {
     try {
       final row = await _client.from('rent_collection_accounts')
           .select('mpesa_paybill,mpesa_till,mpesa_account_reference,bank_name,bank_account_name,bank_account_number,bank_branch,payment_instructions,is_active')
-          .eq('property_id', widget.landlord.propertyId)
+          .eq('property_id', _propertyId)
           .maybeSingle();
       if (!mounted || row == null) return;
       setState(() {
@@ -277,7 +286,7 @@ class _LandlordPaymentsPageState extends State<LandlordPaymentsPage> {
       body: RefreshIndicator(
         onRefresh: _loadPayments,
         child: ListView(padding: const EdgeInsets.all(16), children: [
-          Text(widget.landlord.propertyName, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
+          Text(_propertyName, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
           const SizedBox(height: 12),
           Card(
             child: ExpansionTile(
