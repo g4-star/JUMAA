@@ -45,3 +45,9 @@ verify_jwt = true
 
 [functions.rent-charge-generate]
 verify_jwt = true
+
+[functions.create-tenant-account]
+verify_jwt = true
+
+[functions.create-landlord-account]
+verify_jwt = true
