@@ -15141,23 +15141,57 @@ class _RegisterApartmentPageState extends State<RegisterApartmentPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Theme(
-      data: ThemeData(
-        useMaterial3: true,
+    final lightTheme = ThemeData(
+      useMaterial3: true,
+      brightness: Brightness.light,
+      applyElevationOverlayColor: false,
+      colorScheme: ColorScheme.fromSeed(
+        seedColor: const Color(0xFF0B3D2E),
         brightness: Brightness.light,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF0B3D2E),
-          brightness: Brightness.light,
+        surface: Colors.white,
+      ),
+      scaffoldBackgroundColor: Colors.white,
+      canvasColor: Colors.white,
+      cardColor: Colors.white,
+      appBarTheme: const AppBarTheme(
+        backgroundColor: Colors.white,
+        foregroundColor: Color(0xFF0B3D2E),
+        elevation: 0,
+        surfaceTintColor: Colors.transparent,
+      ),
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: const Color(0xFFF5F8F6),
+        labelStyle: const TextStyle(color: Color(0xFF52615A)),
+        hintStyle: const TextStyle(color: Color(0xFF7A8580)),
+        prefixIconColor: const Color(0xFF0B3D2E),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: const BorderSide(color: Color(0xFFDCE5DF)),
         ),
-        scaffoldBackgroundColor: Colors.white,
-        appBarTheme: const AppBarTheme(
-          backgroundColor: Colors.white,
-          foregroundColor: Color(0xFF0B3D2E),
-          elevation: 0,
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: const BorderSide(color: Color(0xFFDCE5DF)),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: const BorderSide(color: Color(0xFF0B3D2E), width: 1.5),
         ),
       ),
-      child: Scaffold(
-      backgroundColor: Colors.white,
+      dropdownMenuTheme: const DropdownMenuThemeData(
+        textStyle: TextStyle(color: Color(0xFF17211D)),
+        menuStyle: MenuStyle(
+          backgroundColor: WidgetStatePropertyAll(Colors.white),
+        ),
+      ),
+    );
+
+    return MediaQuery(
+      data: MediaQuery.of(context).copyWith(platformBrightness: Brightness.light),
+      child: Theme(
+        data: lightTheme,
+        child: Scaffold(
+          backgroundColor: Colors.white,
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
@@ -15625,6 +15659,7 @@ class _RegisterApartmentPageState extends State<RegisterApartmentPage> {
           ],
         ),
       ),
+        ),
       ),
     );
   }
