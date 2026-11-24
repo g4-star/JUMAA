@@ -222,7 +222,13 @@ Future<void> _initializeFirebaseMessaging() async {
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  // Push notifications are optional; a Firebase configuration problem must
+  // never prevent customers from opening JUMAA or accessing their accounts.
+  try {
+    await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  } catch (e) {
+    debugPrint('Firebase initialization failed; push notifications unavailable: $e');
+  }
 
   await Supabase.initialize(
     url: 'https://pdezijwjfqyulkkuhoun.supabase.co',
