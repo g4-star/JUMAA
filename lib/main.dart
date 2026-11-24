@@ -33,6 +33,7 @@ import 'screens/admin/admin_dashboard.dart';
 import 'screens/landlord/landlord_dashboard.dart';
 import 'screens/tenant/tenant_rent_collection_page.dart';
 import 'screens/jumaa_owner/jumaa_owner_dashboard.dart';
+import 'screens/jumaa_owner/owner_rent_collection_page.dart';
 import 'services/booking_service.dart';
 import 'services/notification_service.dart';
 import 'services/jumaa_permission_service.dart';
@@ -7343,6 +7344,14 @@ class _OwnerPaymentsPageState extends State<OwnerPaymentsPage> {
           style: TextStyle(fontWeight: FontWeight.bold),
         ),
         actions: [
+          IconButton(
+            tooltip: 'Rent accounting',
+            icon: const Icon(Icons.home_work_outlined),
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const OwnerRentCollectionPage()),
+            ),
+          ),
           IconButton(
             tooltip: 'Refresh',
             icon: const Icon(Icons.refresh),
