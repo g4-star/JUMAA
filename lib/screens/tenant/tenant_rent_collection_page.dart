@@ -39,7 +39,7 @@ class _TenantRentCollectionPageState extends State<TenantRentCollectionPage> {
     try {
       final rows = await Supabase.instance.client
           .from('rent_payment_records')
-          .select('id,amount,currency,payment_method,status,payment_reference,provider_reference,created_at,verified_at')
+          .select('id,amount,currency,payment_method,status,payment_reference,provider_reference,receipt_number,rejection_reason,created_at,verified_at')
           .order('created_at', ascending: false);
       if (!mounted) return;
       setState(() => _history = List<Map<String, dynamic>>.from(rows));
@@ -47,6 +47,8 @@ class _TenantRentCollectionPageState extends State<TenantRentCollectionPage> {
       debugPrint('Rent history unavailable: $e');
     }
   }
+
+  double get _verifiedTotal => _history.where((p) => p['status'] == 'verified').fold<double>(0, (sum, p) => sum + (double.tryParse(p['amount']?.toString() ?? '0') ?? 0));
 
   Future<void> _startPayment() async {
     final amount = double.tryParse(_amountController.text.trim());
@@ -202,6 +204,15 @@ class _TenantRentCollectionPageState extends State<TenantRentCollectionPage> {
             )),
           ]))),
           const SizedBox(height: 20),
+          Card(child: Padding(padding: const EdgeInsets.all(16), child: Row(children: [
+            const Icon(Icons.receipt_long, color: Colors.green, size: 28),
+            const SizedBox(width: 12),
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Text('Verified rent paid', style: TextStyle(color: Colors.black54)),
+              Text('KSh ${_verifiedTotal.toStringAsFixed(2)}', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
+            ])),
+          ]))),
+          const SizedBox(height: 12),
           const Text('Rent payment history', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
           const SizedBox(height: 8),
           if (_history.isEmpty)
@@ -213,9 +224,13 @@ class _TenantRentCollectionPageState extends State<TenantRentCollectionPage> {
               return Card(
                 margin: const EdgeInsets.only(bottom: 8),
                 child: ListTile(
-                  leading: Icon(status == 'verified' ? Icons.check_circle : Icons.schedule, color: status == 'verified' ? Colors.green : Colors.orange),
+                  leading: Icon(status == 'verified' ? Icons.check_circle : status == 'rejected' ? Icons.cancel : Icons.schedule, color: status == 'verified' ? Colors.green : status == 'rejected' ? Colors.red : Colors.orange),
                   title: Text('KSh ${amount.toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.bold)),
-                  subtitle: Text('${(p['payment_method'] ?? '').toString().toUpperCase()} • ${p['payment_reference'] ?? ''}'),
+                  subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text('${(p['payment_method'] ?? '').toString().toUpperCase()} • ${p['payment_reference'] ?? ''}'),
+                    if (p['receipt_number'] != null) Text('Receipt: ${p['receipt_number']}'),
+                    if (p['rejection_reason'] != null) Text('Reason: ${p['rejection_reason']}', style: const TextStyle(color: Colors.red)),
+                  ]),
                   trailing: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.end, children: [
                     Text(status.toUpperCase(), style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
                     if (status == 'pending') TextButton(onPressed: () => _submitReference(p['id'].toString()), child: const Text('Submit code')),
