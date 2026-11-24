@@ -17369,9 +17369,9 @@ class _PublicUserPageState extends State<PublicUserPage> {
       ),
       body: LayoutBuilder(
         builder: (context, constraints) {
-          final crossAxisCount = constraints.maxWidth < 600
+          final crossAxisCount = constraints.maxWidth < 850
               ? 2
-              : constraints.maxWidth < 1000
+              : constraints.maxWidth < 1200
                   ? 3
                   : 4;
 
@@ -17592,9 +17592,9 @@ class _PublicUserPageState extends State<PublicUserPage> {
                       crossAxisCount: crossAxisCount,
                       crossAxisSpacing: 12,
                       mainAxisSpacing: 12,
-                      childAspectRatio: constraints.maxWidth < 600
-                          ? 0.46
-                          : constraints.maxWidth < 1000
+                      childAspectRatio: constraints.maxWidth < 850
+                          ? 0.56
+                          : constraints.maxWidth < 1200
                               ? 0.72
                               : 0.78,
                     ),
@@ -17754,7 +17754,7 @@ class _PublicUserPageState extends State<PublicUserPage> {
             )
           else
             Container(
-              height: 190,
+              height: compact ? 118 : 190,
               width: double.infinity,
               color: const Color(0xFFE8F3EE),
               child: const Icon(
@@ -17765,7 +17765,7 @@ class _PublicUserPageState extends State<PublicUserPage> {
             ),
 
           Padding(
-            padding: EdgeInsets.all(compact ? 10 : 16),
+            padding: EdgeInsets.all(compact ? 8 : 16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -17776,7 +17776,7 @@ class _PublicUserPageState extends State<PublicUserPage> {
                       child: Text(
                         property.name,
                         style: TextStyle(
-                          fontSize: compact ? 15 : 20,
+                          fontSize: compact ? 13 : 20,
                           fontWeight: FontWeight.bold,
                         ),
                         maxLines: 2,
@@ -17836,16 +17836,16 @@ class _PublicUserPageState extends State<PublicUserPage> {
                             : 'Location not provided',
                         style: TextStyle(
                           color: Colors.black54,
-                          fontSize: compact ? 11 : 14,
+                          fontSize: compact ? 10 : 14,
                         ),
-                        maxLines: compact ? 2 : 3,
+                        maxLines: compact ? 1 : 3,
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
                   ],
                 ),
 
-                SizedBox(height: compact ? 8 : 12),
+                SizedBox(height: compact ? 6 : 12),
 
                 Wrap(
                   spacing: 5,
@@ -17881,7 +17881,7 @@ class _PublicUserPageState extends State<PublicUserPage> {
                   ),
                 ],
 
-                SizedBox(height: compact ? 8 : 14),
+                SizedBox(height: compact ? 6 : 14),
 
                 Row(
                   children: [
@@ -17952,7 +17952,7 @@ class _PublicUserPageState extends State<PublicUserPage> {
                   ],
                 ),
 
-                const SizedBox(height: 10),
+                 SizedBox(height: compact ? 6 : 10),
 
                 SizedBox(
                   width: double.infinity,
@@ -17971,7 +17971,7 @@ class _PublicUserPageState extends State<PublicUserPage> {
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFF0B3D2E),
                       foregroundColor: Colors.white,
-                      padding: EdgeInsets.symmetric(vertical: compact ? 9 : 13),
+                      padding: EdgeInsets.symmetric(vertical: compact ? 7 : 13),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),
