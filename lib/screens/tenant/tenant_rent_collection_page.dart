@@ -118,6 +118,42 @@ class _TenantRentCollectionPageState extends State<TenantRentCollectionPage> {
     }
   }
 
+
+  Future<void> _submitReference(String paymentId) async {
+    final controller = TextEditingController();
+    final reference = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Submit transaction code'),
+        content: TextField(
+          controller: controller,
+          textCapitalization: TextCapitalization.characters,
+          decoration: const InputDecoration(labelText: 'M-Pesa receipt / bank reference'),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, controller.text.trim()), child: const Text('Submit')),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (reference == null || reference.isEmpty) return;
+    try {
+      await Supabase.instance.client.functions.invoke(
+        'rent-payment-submit-reference',
+        body: {'payment_id': paymentId, 'transaction_reference': reference},
+      );
+      await _loadHistory();
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Transaction code sent for landlord verification.')),
+      );
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not submit transaction code: $e')),
+      );
+    }
+  }
+
   Widget _instruction(String label, String value) => Padding(
     padding: const EdgeInsets.symmetric(vertical: 5),
     child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -180,7 +216,7 @@ class _TenantRentCollectionPageState extends State<TenantRentCollectionPage> {
                   leading: Icon(status == 'verified' ? Icons.check_circle : Icons.schedule, color: status == 'verified' ? Colors.green : Colors.orange),
                   title: Text('KSh ${amount.toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.bold)),
                   subtitle: Text('${(p['payment_method'] ?? '').toString().toUpperCase()} • ${p['payment_reference'] ?? ''}'),
-                  trailing: Text(status.toUpperCase(), style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+                  trailing: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.end, children: [\n                    Text(status.toUpperCase(), style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),\n                    if (status == 'pending') TextButton(onPressed: () => _submitReference(p['id'].toString()), child: const Text('Submit code')),\n                  ]),
                 ),
               );
             }),
