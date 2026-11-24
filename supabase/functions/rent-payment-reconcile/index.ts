@@ -22,17 +22,28 @@ Deno.serve(async (req) => {
 
     const admin = createClient(url, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } });
     const { data: payment, error: paymentError } = await admin.from("rent_payment_records")
-      .select("id,property_id,status,amount,payment_reference")
+      .select("id,property_id,status,amount,payment_reference,receipt_number")
       .eq("id", paymentId).maybeSingle();
     if (paymentError) throw paymentError;
     if (!payment) return json({ error: "Payment record not found." }, 404);
-    if (!["pending", "submitted"].includes(payment.status)) return json({ error: "Only pending or submitted rent payments can be verified." }, 409);
+    if (!["pending", "submitted", "verified"].includes(payment.status)) return json({ error: "This rent payment cannot be reconciled in its current state." }, 409);
 
     const { data: property, error: propertyError } = await admin.from("properties")
       .select("id,owner_id,landlord_id").eq("id", payment.property_id).maybeSingle();
     if (propertyError) throw propertyError;
     if (!property || (property.owner_id !== user.id && property.landlord_id !== user.id)) {
       return json({ error: "Only the assigned landlord or property owner can reconcile this payment." }, 403);
+    }
+
+    // A retry for an already verified payment only retries allocation.
+    // The SQL allocator is idempotent and prevents duplicate charge credits.
+    if (payment.status === "verified") {
+      const { error: retryAllocationError } = await admin.rpc("allocate_rent_payment", { p_payment_id: paymentId });
+      if (retryAllocationError) {
+        console.error("Verified rent allocation retry failed:", retryAllocationError);
+        return json({ error: "Payment is verified, but rent allocation still needs retry." }, 503);
+      }
+      return json({ success: true, payment, allocation_pending: false, message: "Existing verified payment allocation checked." });
     }
 
     // This is an auditable manual reconciliation action. The operator must
