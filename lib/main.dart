@@ -11259,6 +11259,7 @@ class _LandlordLoginPageState extends State<LandlordLoginPage> {
         ),
       );
     } on AuthException catch (e) {
+      await OpenNestStore.supabase.auth.signOut();
       if (!mounted) return;
 
       setState(() {
@@ -11274,6 +11275,7 @@ class _LandlordLoginPageState extends State<LandlordLoginPage> {
         ),
       );
     } catch (e) {
+      await OpenNestStore.supabase.auth.signOut();
       if (!mounted) return;
 
       setState(() {
