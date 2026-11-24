@@ -25,6 +25,7 @@ class _LandlordPaymentsPageState extends State<LandlordPaymentsPage> {
   bool _accountActive = false;
   String? _error;
   List<Map<String, dynamic>> _payments = [];
+  List<Map<String, dynamic>> _charges = [];
 
   @override
   void initState() {
@@ -111,11 +112,60 @@ class _LandlordPaymentsPageState extends State<LandlordPaymentsPage> {
           .select('id,tenant_id,property_id,unit_id,amount,payment_method,status,payment_reference,provider_reference,receipt_number,rejection_reason,submitted_at,created_at,verified_at')
           .eq('property_id', widget.landlord.propertyId)
           .order('created_at', ascending: false);
+      final chargeRows = await _client.from('rent_charge_records')
+          .select('id,tenant_id,period_start,due_date,amount_due,amount_paid,status')
+          .eq('property_id', widget.landlord.propertyId)
+          .order('due_date', ascending: true);
       if (!mounted) return;
-      setState(() { _payments = List<Map<String, dynamic>>.from(rows); _loading = false; });
+      setState(() {
+        _payments = List<Map<String, dynamic>>.from(rows);
+        _charges = List<Map<String, dynamic>>.from(chargeRows);
+        _loading = false;
+      });
     } catch (e) {
       if (!mounted) return;
       setState(() { _error = e.toString(); _loading = false; });
+    }
+  }
+
+  Future<void> _generateMonthlyCharges() async {
+    final now = DateTime.now();
+    final periodController = TextEditingController(text: '${now.year}-${now.month.toString().padLeft(2, '0')}');
+    final dueController = TextEditingController(text: '${now.year}-${now.month.toString().padLeft(2, '0')}-05');
+    final values = await showDialog<List<String>>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Generate monthly rent charges'),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          TextField(controller: periodController, decoration: const InputDecoration(labelText: 'Billing month (YYYY-MM)')),
+          TextField(controller: dueController, decoration: const InputDecoration(labelText: 'Due date (YYYY-MM-DD)')),
+          const SizedBox(height: 8),
+          const Text('Creates one charge per active tenant using the assigned unit monthly rent. Existing charges are not duplicated.', style: TextStyle(fontSize: 12, color: Colors.black54)),
+        ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, [periodController.text.trim(), dueController.text.trim()]), child: const Text('Generate')),
+        ],
+      ),
+    );
+    periodController.dispose();
+    dueController.dispose();
+    if (values == null) return;
+    try {
+      final response = await _client.functions.invoke('rent-charge-generate', body: {
+        'property_id': widget.landlord.propertyId,
+        'period': values[0],
+        'due_date': values[1],
+      });
+      if (response.data is Map && response.data['success'] != true) {
+        throw Exception(response.data['error'] ?? 'Could not generate rent charges.');
+      }
+      await _loadPayments();
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(response.data['message']?.toString() ?? 'Rent charges generated.')),
+      );
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not generate charges: $e')));
     }
   }
 
@@ -213,6 +263,13 @@ class _LandlordPaymentsPageState extends State<LandlordPaymentsPage> {
     final verified = _payments.where((p) => p['status'] == 'verified').toList();
     final awaiting = _payments.where((p) => p['status'] == 'submitted' || p['status'] == 'pending').toList();
     final total = verified.fold<double>(0, (sum, p) => sum + (double.tryParse(p['amount'].toString()) ?? 0));
+    final outstanding = _charges.fold<double>(0, (sum, charge) {
+      final due = double.tryParse(charge['amount_due']?.toString() ?? '0') ?? 0;
+      final paid = double.tryParse(charge['amount_paid']?.toString() ?? '0') ?? 0;
+      return sum + (due - paid).clamp(0, double.infinity).toDouble();
+    });
+    final today = DateTime.now().toIso8601String().substring(0, 10);
+    final overdueCount = _charges.where((charge) => charge['status'] != 'paid' && (charge['due_date']?.toString() ?? '9999') < today).length;
     return Scaffold(
       appBar: AppBar(title: const Text('Rent collection', style: TextStyle(fontWeight: FontWeight.bold)), actions: [
         IconButton(onPressed: _loadPayments, icon: const Icon(Icons.refresh)),
@@ -265,6 +322,39 @@ class _LandlordPaymentsPageState extends State<LandlordPaymentsPage> {
             const SizedBox(width: 8),
             Expanded(child: _metric('Collected', 'KSh ${total.toStringAsFixed(0)}', Icons.account_balance_wallet, Colors.indigo)),
           ]),
+          const SizedBox(height: 12),
+          Card(child: Padding(padding: const EdgeInsets.all(16), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Text('Rent accounting', style: TextStyle(fontWeight: FontWeight.w800)),
+            const SizedBox(height: 6),
+            Text('Outstanding: KSh ${outstanding.toStringAsFixed(2)}', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
+            Text('Overdue charges: $overdueCount', style: const TextStyle(color: Colors.deepOrange)),
+            const SizedBox(height: 10),
+            SizedBox(width: double.infinity, child: FilledButton.icon(
+              onPressed: _generateMonthlyCharges,
+              icon: const Icon(Icons.calendar_month),
+              label: const Text('Generate monthly rent charges'),
+            )),
+          ]))),
+          const SizedBox(height: 20),
+          const Text('Monthly rent charges', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 8),
+          if (_charges.isEmpty)
+            const Card(child: Padding(padding: EdgeInsets.all(16), child: Text('No rent charges generated yet.')))
+          else
+            ..._charges.map((charge) {
+              final due = double.tryParse(charge['amount_due']?.toString() ?? '0') ?? 0;
+              final paid = double.tryParse(charge['amount_paid']?.toString() ?? '0') ?? 0;
+              final balance = due - paid;
+              return Card(
+                margin: const EdgeInsets.only(bottom: 6),
+                child: ListTile(
+                  dense: true,
+                  title: Text('${charge['period_start']} • Tenant ${charge['tenant_id']}'),
+                  subtitle: Text('Due ${charge['due_date']} • KSh ${paid.toStringAsFixed(2)} paid of KSh ${due.toStringAsFixed(2)}'),
+                  trailing: Text('KSh ${balance.toStringAsFixed(2)}', style: TextStyle(fontWeight: FontWeight.bold, color: balance <= 0 ? Colors.green : Colors.deepOrange)),
+                ),
+              );
+            }),
           const SizedBox(height: 20),
           const Text('Tenant rent payments', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
           const SizedBox(height: 8),
