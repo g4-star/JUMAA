@@ -108,8 +108,8 @@ grant select on public.rent_charge_records, public.rent_payment_allocations to a
 create or replace function public.allocate_rent_payment(p_payment_id uuid)
 returns void
 language plpgsql
-security definer
-set search_path = public
+security invoker
+set search_path = ''
 as $$
 declare
   v_payment public.rent_payment_records%rowtype;
@@ -160,8 +160,8 @@ $$;
 create or replace function public.apply_tenant_rent_credits(p_tenant_id uuid)
 returns void
 language plpgsql
-security definer
-set search_path = public
+security invoker
+set search_path = ''
 as $$
 declare
   v_payment public.rent_payment_records%rowtype;
