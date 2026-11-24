@@ -13,3 +13,13 @@ comment on column public.rent_payment_records.receipt_number is
   'JUMAA receipt identifier assigned only after an authorized verification.';
 comment on column public.rent_payment_records.rejected_by is
   'Authenticated property owner or assigned landlord who rejected the submission.';
+
+-- Property managers may read their own property's account instructions.
+drop policy if exists "Property managers read rent collection accounts" on public.rent_collection_accounts;
+create policy "Property managers read rent collection accounts"
+  on public.rent_collection_accounts for select to authenticated
+  using (exists (
+    select 1 from public.properties p
+    where p.id = rent_collection_accounts.property_id
+      and (p.owner_id = (select auth.uid()) or p.landlord_id = (select auth.uid()))
+  ));
