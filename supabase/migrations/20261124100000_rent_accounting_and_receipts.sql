@@ -167,6 +167,7 @@ declare
   v_payment public.rent_payment_records%rowtype;
   v_charge public.rent_charge_records%rowtype;
   v_apply numeric(12,2);
+  v_allocation_id uuid;
 begin
   for v_payment in
     select * from public.rent_payment_records
@@ -184,17 +185,20 @@ begin
       v_apply := least(v_payment.unallocated_amount, v_charge.amount_due - v_charge.amount_paid);
       insert into public.rent_payment_allocations(payment_id, charge_id, amount)
       values (v_payment.id, v_charge.id, v_apply)
-      on conflict (payment_id, charge_id) do nothing;
-      update public.rent_charge_records
-        set amount_paid = amount_paid + v_apply,
-            status = case when amount_paid + v_apply >= amount_due then 'paid' else 'partial' end,
-            updated_at = now()
-        where id = v_charge.id;
-      update public.rent_payment_records
-        set unallocated_amount = greatest(unallocated_amount - v_apply, 0),
-            updated_at = now()
-        where id = v_payment.id
-        returning * into v_payment;
+      on conflict (payment_id, charge_id) do nothing
+      returning id into v_allocation_id;
+      if found then
+        update public.rent_charge_records
+          set amount_paid = amount_paid + v_apply,
+              status = case when amount_paid + v_apply >= amount_due then 'paid' else 'partial' end,
+              updated_at = now()
+          where id = v_charge.id;
+        update public.rent_payment_records
+          set unallocated_amount = greatest(unallocated_amount - v_apply, 0),
+              updated_at = now()
+          where id = v_payment.id
+          returning * into v_payment;
+      end if;
     end loop;
   end loop;
 end;
