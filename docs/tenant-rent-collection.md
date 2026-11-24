@@ -29,7 +29,7 @@ Bank transfer instructions are property-specific. Automated bank confirmation re
 - Apply the migration.
 - Deploy `rent-payment-intent` with JWT verification enabled.
 - Configure one or more active `rent_collection_accounts` rows per property with verified landlord-owned destinations.
-- The current account-configuration screen is integrated into the landlord Payments page. A dedicated owner-side entry point still needs wiring if owners manage accounts without using the landlord dashboard.
+- The current account-configuration screen is integrated into the landlord Payments page. Owners can open **Payments → Rent accounting** to choose an owned property; assigned landlords use their landlord Payments screen.
 - Apply and test the new monthly charge/receipt migration before enabling the accounting screens.
 - Implement and test a Daraja integration for approved landlord-owned shortcodes (or an approved direct-settlement aggregator) before enabling STK Push or automatic M-Pesa verification.
 - Configure a bank/aggregator statement API before enabling automatic bank reconciliation.
