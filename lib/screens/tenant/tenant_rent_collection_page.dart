@@ -204,13 +204,17 @@ class _TenantRentCollectionPageState extends State<TenantRentCollectionPage> {
         body: {'payment_id': paymentId, 'transaction_reference': reference},
       );
       await _loadHistory();
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Transaction code sent for landlord verification.')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Transaction code sent for landlord verification.')),
+        );
+      }
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not submit transaction code: $e')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not submit transaction code: $e')),
+        );
+      }
     }
   }
 
@@ -231,14 +235,15 @@ class _TenantRentCollectionPageState extends State<TenantRentCollectionPage> {
     final bankNumber = account['bank_account_number']?.toString();
     final isPaybill = paybill != null && paybill.isNotEmpty;
     final isTill = till != null && till.isNotEmpty;
+    final destinationNumber = isPaybill ? paybill : till;
     return Card(child: Padding(
       padding: const EdgeInsets.all(16),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         const Row(children: [Icon(Icons.account_balance_wallet_outlined), SizedBox(width: 8), Text('Apartment payment destination', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16))]),
         const SizedBox(height: 8),
-        if (isPaybill || isTill) ...[
+        if (destinationNumber != null && destinationNumber.isNotEmpty) ...[
           Text(isPaybill ? 'M-Pesa Paybill' : 'M-Pesa Till', style: const TextStyle(color: Colors.black54)),
-          SelectableText(isPaybill ? paybill : till, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800, letterSpacing: 1)),
+          SelectableText(destinationNumber, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800, letterSpacing: 1)),
           if (isPaybill && (account['mpesa_account_reference']?.toString().isNotEmpty ?? false))
             _instruction('Account number', account['mpesa_account_reference'].toString()),
         ] else if (bankNumber != null && bankNumber.isNotEmpty) ...[
