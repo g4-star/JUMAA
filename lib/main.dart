@@ -15726,10 +15726,12 @@ class _RegisterApartmentPageState extends State<RegisterApartmentPage> {
 class _PropertyImageCarousel extends StatefulWidget {
   final List<String> images;
   final Widget placeholder;
+  final double height;
 
   const _PropertyImageCarousel({
     required this.images,
     required this.placeholder,
+    this.height = 220,
   });
 
   @override
@@ -15795,7 +15797,7 @@ class _PropertyImageCarouselState extends State<_PropertyImageCarousel> {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      height: 220,
+      height: widget.height,
       width: double.infinity,
       child: ClipRRect(
         borderRadius: BorderRadius.circular(18),
@@ -17593,7 +17595,7 @@ class _PublicUserPageState extends State<PublicUserPage> {
                       crossAxisSpacing: 12,
                       mainAxisSpacing: 12,
                       childAspectRatio: constraints.maxWidth < 850
-                          ? 0.56
+                          ? 0.66
                           : constraints.maxWidth < 1200
                               ? 0.72
                               : 0.78,
@@ -17724,11 +17726,178 @@ class _PublicUserPageState extends State<PublicUserPage> {
   Widget _propertyCard(_PublicPropertyListing listing) {
     final property = listing.property;
     final compact = MediaQuery.sizeOf(context).width < 850;
-
     final images = <String>[
       ...property.imagePaths,
       ...listing.vacantUnits.expand((unit) => unit.imagePaths),
     ].where((image) => image.trim().isNotEmpty).toSet().toList();
+
+    final photo = _PropertyImageCarousel(
+      images: images,
+      height: compact ? 126 : 220,
+      placeholder: Container(
+        color: const Color(0xFFE8F3EE),
+        child: const Center(
+          child: Icon(Icons.apartment, size: 52, color: Color(0xFF0B3D2E)),
+        ),
+      ),
+    );
+
+    if (compact) {
+      return Card(
+        margin: EdgeInsets.zero,
+        elevation: 2,
+        clipBehavior: Clip.antiAlias,
+        color: Colors.white,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(color: Colors.grey.withValues(alpha: 0.12)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            SizedBox(
+              height: 126,
+              child: images.isEmpty
+                  ? Container(
+                      color: const Color(0xFFE8F3EE),
+                      child: const Center(
+                        child: Icon(Icons.apartment,
+                            size: 52, color: Color(0xFF0B3D2E)),
+                      ),
+                    )
+                  : photo,
+            ),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(9, 8, 9, 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            property.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w800,
+                              color: Color(0xFF17211D),
+                            ),
+                          ),
+                        ),
+                        if (listing.isBoosted)
+                          const Icon(Icons.local_fire_department,
+                              size: 15, color: Colors.deepOrange),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        const Icon(Icons.location_on_outlined,
+                            size: 13, color: Colors.black54),
+                        const SizedBox(width: 3),
+                        Expanded(
+                          child: Text(
+                            property.location.isNotEmpty
+                                ? property.location
+                                : property.address.isNotEmpty
+                                    ? property.address
+                                    : 'Location not provided',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                                fontSize: 10, color: Colors.black54),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'From KSh ${listing.lowestRent}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Color(0xFF0B3D2E),
+                        fontWeight: FontWeight.w800,
+                        fontSize: 12,
+                      ),
+                    ),
+                    const Spacer(),
+                    Row(
+                      children: [
+                        InkWell(
+                          onTap: listing.vacantUnits.isEmpty
+                              ? null
+                              : () => _togglePropertyLike(listing.vacantUnits.first),
+                          borderRadius: BorderRadius.circular(20),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 3, vertical: 4),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  listing.isLiked
+                                      ? Icons.favorite
+                                      : Icons.favorite_border,
+                                  color: listing.isLiked
+                                      ? Colors.red
+                                      : Colors.grey.shade700,
+                                  size: 17,
+                                ),
+                                const SizedBox(width: 3),
+                                Text(
+                                  '${listing.likeCount}',
+                                  style: const TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w700),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const Spacer(),
+                        SizedBox(
+                          height: 31,
+                          child: FilledButton(
+                            onPressed: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => PublicPropertyDetailsPage(
+                                      property: property),
+                                ),
+                              );
+                            },
+                            style: FilledButton.styleFrom(
+                              backgroundColor: const Color(0xFF0B3D2E),
+                              foregroundColor: Colors.white,
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 11),
+                              visualDensity: VisualDensity.compact,
+                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(9),
+                              ),
+                            ),
+                            child: const Text('VIEW',
+                                style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.bold)),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
 
     return Card(
       margin: EdgeInsets.zero,
@@ -17739,33 +17908,17 @@ class _PublicUserPageState extends State<PublicUserPage> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (images.isNotEmpty)
-            _PropertyImageCarousel(
-              images: images,
-              placeholder: Container(
-                height: compact ? 118 : 190,
-                width: double.infinity,
-                color: const Color(0xFFE8F3EE),
-                child: const Icon(
-                  Icons.apartment,
-                  size: 60,
-                  color: Color(0xFF0B3D2E),
-                ),
-              ),
-            )
+            photo
           else
             Container(
-              height: compact ? 118 : 190,
+              height: 190,
               width: double.infinity,
               color: const Color(0xFFE8F3EE),
-              child: const Icon(
-                Icons.apartment,
-                size: 60,
-                color: Color(0xFF0B3D2E),
-              ),
+              child: const Icon(Icons.apartment,
+                  size: 60, color: Color(0xFF0B3D2E)),
             ),
-
           Padding(
-            padding: EdgeInsets.all(compact ? 8 : 16),
+            padding: const EdgeInsets.all(16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -17773,170 +17926,93 @@ class _PublicUserPageState extends State<PublicUserPage> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Expanded(
-                      child: Text(
-                        property.name,
-                        style: TextStyle(
-                          fontSize: compact ? 13 : 20,
-                          fontWeight: FontWeight.bold,
-                        ),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
+                      child: Text(property.name,
+                          style: const TextStyle(
+                              fontSize: 20, fontWeight: FontWeight.bold),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis),
                     ),
-
                     if (listing.isBoosted)
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 9,
-                          vertical: 5,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.orange.shade100,
-                          borderRadius: BorderRadius.circular(9),
-                        ),
-                        child: const Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              Icons.local_fire_department,
-                              size: 14,
-                              color: Colors.deepOrange,
-                            ),
-                            SizedBox(width: 3),
-                            Text(
-                              'BOOSTED',
-                              style: TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.deepOrange,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
+                      const Icon(Icons.local_fire_department,
+                          color: Colors.deepOrange),
                   ],
                 ),
-
-                SizedBox(height: compact ? 5 : 8),
-
+                const SizedBox(height: 8),
                 Row(
                   children: [
-                    const Icon(
-                      Icons.location_on_outlined,
-                      size: 18,
-                      color: Colors.grey,
-                    ),
+                    const Icon(Icons.location_on_outlined,
+                        size: 18, color: Colors.grey),
                     const SizedBox(width: 5),
                     Expanded(
                       child: Text(
                         property.location.isNotEmpty
                             ? property.location
                             : property.address.isNotEmpty
-                            ? property.address
-                            : 'Location not provided',
-                        style: TextStyle(
-                          color: Colors.black54,
-                          fontSize: compact ? 10 : 14,
-                        ),
-                        maxLines: compact ? 1 : 3,
+                                ? property.address
+                                : 'Location not provided',
+                        style: const TextStyle(
+                            color: Colors.black54, fontSize: 14),
+                        maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
                   ],
                 ),
-
-                SizedBox(height: compact ? 6 : 12),
-
+                const SizedBox(height: 12),
                 Wrap(
                   spacing: 5,
                   runSpacing: 5,
                   children: [
                     _propertyInfoChip(
                       Icons.home_work_outlined,
-                      '${listing.vacantCount} vacant '
-                      '${listing.vacantCount == 1 ? 'unit' : 'units'}',
+                      '${listing.vacantCount} vacant ${listing.vacantCount == 1 ? 'unit' : 'units'}',
                     ),
                     _propertyInfoChip(
-                      Icons.payments_outlined,
-                      'From KSh ${listing.lowestRent}',
-                    ),
+                        Icons.payments_outlined,
+                        'From KSh ${listing.lowestRent}'),
                   ],
                 ),
-
-                if (!compact && listing.unitTypes.isNotEmpty) ...[
-                  SizedBox(height: compact ? 6 : 10),
-                  Text(
-                    listing.unitTypes.join(' • '),
-                    style: const TextStyle(color: Colors.black54, fontSize: 13),
-                  ),
-                ],
-
-                if (!compact && property.description.trim().isNotEmpty) ...[
+                if (listing.unitTypes.isNotEmpty) ...[
                   const SizedBox(height: 10),
-                  Text(
-                    property.description,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(color: Colors.black54, height: 1.35),
-                  ),
+                  Text(listing.unitTypes.join(' • '),
+                      style: const TextStyle(
+                          color: Colors.black54, fontSize: 13)),
                 ],
-
-                SizedBox(height: compact ? 6 : 14),
-
+                if (property.description.trim().isNotEmpty) ...[
+                  const SizedBox(height: 10),
+                  Text(property.description,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                          color: Colors.black54, height: 1.35)),
+                ],
+                const SizedBox(height: 14),
                 Row(
                   children: [
                     InkWell(
                       onTap: listing.vacantUnits.isEmpty
                           ? null
-                          : () =>
-                                _togglePropertyLike(listing.vacantUnits.first),
+                          : () => _togglePropertyLike(listing.vacantUnits.first),
                       borderRadius: BorderRadius.circular(22),
-                      child: Container(
-                        padding: EdgeInsets.symmetric(
-                          horizontal: compact ? 8 : 12,
-                          vertical: compact ? 6 : 8,
-                        ),
-                        decoration: BoxDecoration(
-                          color: listing.isLiked
-                              ? Colors.red.withValues(alpha: 0.10)
-                              : Colors.grey.withValues(alpha: 0.08),
-                          borderRadius: BorderRadius.circular(22),
-                          border: Border.all(
-                            color: listing.isLiked
-                                ? Colors.red.withValues(alpha: 0.35)
-                                : Colors.grey.withValues(alpha: 0.25),
-                          ),
-                        ),
+                      child: Padding(
+                        padding: const EdgeInsets.all(8),
                         child: Row(
-                          mainAxisSize: MainAxisSize.min,
                           children: [
                             Icon(
-                              listing.isLiked
-                                  ? Icons.favorite
-                                  : Icons.favorite_border,
-                              size: compact ? 17 : 21,
-                              color: listing.isLiked
-                                  ? Colors.red
-                                  : Colors.grey.shade700,
-                            ),
-                            const SizedBox(width: 4),
-                            Text(
-                              '${listing.likeCount} '
-                              '${listing.likeCount == 1 ? 'like' : 'likes'}',
-                              style: TextStyle(
-                                fontSize: compact ? 10 : 14,
-                                fontWeight: FontWeight.w700,
+                                listing.isLiked
+                                    ? Icons.favorite
+                                    : Icons.favorite_border,
                                 color: listing.isLiked
                                     ? Colors.red
-                                    : Colors.grey.shade800,
-                              ),
-                            ),
+                                    : Colors.grey.shade700),
+                            const SizedBox(width: 4),
+                            Text('${listing.likeCount} likes'),
                           ],
                         ),
                       ),
                     ),
-                    if (!compact) const Spacer(),
-                    if (!compact) OutlinedButton.icon(
+                    const Spacer(),
+                    OutlinedButton.icon(
                       onPressed: () {
                         Navigator.push(
                           context,
@@ -17951,9 +18027,7 @@ class _PublicUserPageState extends State<PublicUserPage> {
                     ),
                   ],
                 ),
-
-                 SizedBox(height: compact ? 6 : 10),
-
+                const SizedBox(height: 10),
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton.icon(
@@ -17967,14 +18041,13 @@ class _PublicUserPageState extends State<PublicUserPage> {
                       );
                     },
                     icon: const Icon(Icons.visibility_outlined),
-                    label: Text(compact ? 'VIEW' : 'VIEW APARTMENT'),
+                    label: const Text('VIEW APARTMENT'),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFF0B3D2E),
                       foregroundColor: Colors.white,
-                      padding: EdgeInsets.symmetric(vertical: compact ? 7 : 13),
+                      padding: const EdgeInsets.symmetric(vertical: 13),
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
+                          borderRadius: BorderRadius.circular(12)),
                     ),
                   ),
                 ),
