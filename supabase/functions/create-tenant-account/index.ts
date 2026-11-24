@@ -29,6 +29,33 @@ Deno.serve(async (req) => {
   }
 
   try {
+    if (req.method !== 'POST') {
+      return new Response(JSON.stringify({ success: false, error: 'Method not allowed.' }), {
+        status: 405, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const authorization = req.headers.get('Authorization') ?? '';
+    if (!authorization.startsWith('Bearer ')) {
+      return new Response(JSON.stringify({ success: false, error: 'Authentication required.' }), {
+        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+    const callerResponse = await fetch(SUPABASE_URL + '/auth/v1/user', {
+      headers: { apikey: SUPABASE_SERVICE_ROLE_KEY, Authorization: authorization },
+    });
+    if (!callerResponse.ok) {
+      return new Response(JSON.stringify({ success: false, error: 'Authentication required.' }), {
+        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+    const caller = await callerResponse.json();
+    if (typeof caller?.id !== 'string' || !caller.id) {
+      return new Response(JSON.stringify({ success: false, error: 'Authentication required.' }), {
+        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+  try {
     if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
       throw new Error('Supabase service credentials are not configured.');
     }
@@ -98,6 +125,31 @@ Deno.serve(async (req) => {
     }
 
     const tenant = tenants[0];
+
+    // Only the property owner or its assigned landlord may create tenant logins.
+    const callerProfileResponse = await fetch(
+      SUPABASE_URL + '/rest/v1/profiles?id=eq.' + encodeURIComponent(caller.id) + '&select=id,role',
+      { headers: { apikey: SUPABASE_SERVICE_ROLE_KEY, Authorization: 'Bearer ' + SUPABASE_SERVICE_ROLE_KEY } },
+    );
+    if (!callerProfileResponse.ok) throw new Error('Could not verify account permissions.');
+    const callerProfiles = await callerProfileResponse.json();
+    const callerRole = Array.isArray(callerProfiles) ? callerProfiles[0]?.role?.toString().toLowerCase() : null;
+
+    const propertyResponse = await fetch(
+      SUPABASE_URL + '/rest/v1/properties?id=eq.' + encodeURIComponent(tenant.property_id) + '&select=id,owner_id,landlord_id',
+      { headers: { apikey: SUPABASE_SERVICE_ROLE_KEY, Authorization: 'Bearer ' + SUPABASE_SERVICE_ROLE_KEY } },
+    );
+    if (!propertyResponse.ok) throw new Error('Could not verify tenant property.');
+    const properties = await propertyResponse.json();
+    const property = Array.isArray(properties) ? properties[0] : null;
+    const mayManageProperty =
+      (callerRole === 'owner' && property?.owner_id === caller.id) ||
+      (callerRole === 'landlord' && property?.landlord_id === caller.id);
+    if (!mayManageProperty) {
+      return new Response(JSON.stringify({ success: false, error: 'You are not allowed to create tenant accounts for this property.' }), {
+        status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }    const tenant = tenants[0];
 
     // ----------------------------------------------------------
     // 2. Check whether a profile already exists.
