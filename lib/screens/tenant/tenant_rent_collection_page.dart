@@ -63,7 +63,7 @@ class _TenantRentCollectionPageState extends State<TenantRentCollectionPage> {
   double get _outstandingTotal => _charges.fold<double>(0, (sum, c) {
     final due = double.tryParse(c['amount_due']?.toString() ?? '0') ?? 0;
     final paid = double.tryParse(c['amount_paid']?.toString() ?? '0') ?? 0;
-    return sum + (due - paid).clamp(0, double.infinity);
+    return sum + (due - paid).clamp(0, double.infinity).toDouble();
   });
 
   Future<void> _shareReceipt(Map<String, dynamic> payment) async {
