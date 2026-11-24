@@ -30,3 +30,6 @@ verify_jwt = false
 
 [functions.rent-payment-intent]
 verify_jwt = true
+
+[functions.rent-payment-reconcile]
+verify_jwt = true
