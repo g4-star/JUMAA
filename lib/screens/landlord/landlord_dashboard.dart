@@ -316,7 +316,21 @@ class _LandlordDashboardPageState extends State<LandlordDashboardPage> {
       ),
     ];
 
-    return Scaffold(
+    return PopScope<Object?>(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        if (_currentIndex != 0) {
+          setState(() => _currentIndex = 0);
+        } else {
+          ScaffoldMessenger.of(context)
+            ..hideCurrentSnackBar()
+            ..showSnackBar(
+              const SnackBar(content: Text('You are already on your landlord dashboard.')),
+            );
+        }
+      },
+      child: Scaffold(
       body: IndexedStack(index: _currentIndex, children: pages),
       bottomNavigationBar: NavigationBar(
         height: 52,
@@ -372,6 +386,7 @@ class _LandlordDashboardPageState extends State<LandlordDashboardPage> {
             label: 'Settings',
           ),
         ],
+      ),
       ),
     );
   }
