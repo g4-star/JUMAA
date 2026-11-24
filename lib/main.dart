@@ -18390,7 +18390,7 @@ class _JUMAALoginPageState extends State<JUMAALoginPage> {
         final prefs = await SharedPreferences.getInstance();
 
         await prefs.setBool('jumaa_logged_in', true);
-        await prefs.setString('jumaa_logged_in_email', email);
+        await prefs.setString('jumaa_logged_in_email', user.email ?? identifier);
         await prefs.setString('jumaa_logged_in_role', 'tenant');
 
         if (!mounted) return;
@@ -18418,7 +18418,7 @@ class _JUMAALoginPageState extends State<JUMAALoginPage> {
 
         final prefs = await SharedPreferences.getInstance();
         await prefs.setBool('jumaa_logged_in', true);
-        await prefs.setString('jumaa_logged_in_email', email);
+        await prefs.setString('jumaa_logged_in_email', user.email ?? identifier);
         await prefs.setString('jumaa_logged_in_role', 'jumaa_owner');
 
         if (!mounted) return;
@@ -18443,7 +18443,7 @@ class _JUMAALoginPageState extends State<JUMAALoginPage> {
         final prefs = await SharedPreferences.getInstance();
 
         await prefs.setBool('jumaa_logged_in', true);
-        await prefs.setString('jumaa_logged_in_email', email);
+        await prefs.setString('jumaa_logged_in_email', user.email ?? identifier);
         await prefs.setString('jumaa_logged_in_role', 'owner');
 
         if (!mounted) return;
@@ -18559,10 +18559,12 @@ class _JUMAALoginPageState extends State<JUMAALoginPage> {
 
           TextField(
             controller: _emailController,
-            keyboardType: TextInputType.emailAddress,
+            keyboardType: TextInputType.text,
+            autocorrect: false,
             style: const TextStyle(color: Colors.black, fontSize: 16),
             decoration: InputDecoration(
-              labelText: 'Email',
+              labelText: 'Email or phone number',
+              hintText: 'Enter your registered email or phone number',
               prefixIcon: const Icon(Icons.email_outlined),
               filled: true,
               fillColor: Colors.white,
