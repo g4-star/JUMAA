@@ -118,7 +118,7 @@ class _LandlordPaymentsPageState extends State<LandlordPaymentsPage> {
     setState(() { _loading = true; _error = null; });
     try {
       final rows = await _client.from('rent_payment_records')
-          .select('id,tenant_id,property_id,unit_id,amount,payment_method,status,payment_reference,provider_reference,receipt_number,rejection_reason,submitted_at,created_at,verified_at')
+          .select('id,tenant_id,property_id,unit_id,amount,payment_method,status,payment_reference,provider_reference,receipt_number,rejection_reason,unallocated_amount,submitted_at,created_at,verified_at')
           .eq('property_id', widget.landlord.propertyId)
           .order('created_at', ascending: false);
       final chargeRows = await _client.from('rent_charge_records')
@@ -272,6 +272,7 @@ class _LandlordPaymentsPageState extends State<LandlordPaymentsPage> {
     final verified = _payments.where((p) => p['status'] == 'verified').toList();
     final awaiting = _payments.where((p) => p['status'] == 'submitted' || p['status'] == 'pending').toList();
     final total = verified.fold<double>(0, (sum, p) => sum + (double.tryParse(p['amount'].toString()) ?? 0));
+    final rentCredits = verified.fold<double>(0, (sum, p) => sum + (double.tryParse(p['unallocated_amount']?.toString() ?? '0') ?? 0));
     final outstanding = _charges.fold<double>(0, (sum, charge) {
       final due = double.tryParse(charge['amount_due']?.toString() ?? '0') ?? 0;
       final paid = double.tryParse(charge['amount_paid']?.toString() ?? '0') ?? 0;
@@ -337,6 +338,7 @@ class _LandlordPaymentsPageState extends State<LandlordPaymentsPage> {
             const SizedBox(height: 6),
             Text('Outstanding: KSh ${outstanding.toStringAsFixed(2)}', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
             Text('Overdue charges: $overdueCount', style: const TextStyle(color: Colors.deepOrange)),
+            Text('Tenant rent credits: KSh ${rentCredits.toStringAsFixed(2)}', style: const TextStyle(color: Colors.teal)),
             const SizedBox(height: 10),
             SizedBox(width: double.infinity, child: FilledButton.icon(
               onPressed: _generateMonthlyCharges,
