@@ -34,13 +34,17 @@ Deno.serve(async (req) => {
     const propertyId = clean(body.property_id, 64);
     if (!propertyId) return json({ error: "Property is required." }, 400);
 
-    const mpesaPaybill = clean(body.mpesa_paybill, 32);
-    const mpesaTill = clean(body.mpesa_till, 32);
-    const mpesaReference = clean(body.mpesa_account_reference, 64);
-    const bankName = clean(body.bank_name, 100);
-    const bankAccountName = clean(body.bank_account_name, 120);
-    const bankAccountNumber = clean(body.bank_account_number, 64);
-    const bankBranch = clean(body.bank_branch, 100);
+    const destinationType = String(body.destination_type ?? "");
+    if (!["paybill", "till", "bank"].includes(destinationType)) {
+      return json({ error: "Choose exactly one destination: Paybill, Till or bank account." }, 400);
+    }
+    const mpesaPaybill = destinationType === "paybill" ? clean(body.mpesa_paybill, 32) : null;
+    const mpesaTill = destinationType === "till" ? clean(body.mpesa_till, 32) : null;
+    const mpesaReference = destinationType === "paybill" ? clean(body.mpesa_account_reference, 64) : null;
+    const bankName = destinationType === "bank" ? clean(body.bank_name, 100) : null;
+    const bankAccountName = destinationType === "bank" ? clean(body.bank_account_name, 120) : null;
+    const bankAccountNumber = destinationType === "bank" ? clean(body.bank_account_number, 64) : null;
+    const bankBranch = destinationType === "bank" ? clean(body.bank_branch, 100) : null;
     const instructions = clean(body.payment_instructions, 500);
     const isActive = body.is_active === true;
 
@@ -50,6 +54,9 @@ Deno.serve(async (req) => {
     if (mpesaTill && !/^[0-9]{5,10}$/.test(mpesaTill)) {
       return json({ error: "Till number must contain 5–10 digits." }, 400);
     }
+    if (destinationType === "paybill" && !mpesaPaybill) return json({ error: "Enter the apartment's Paybill number." }, 400);
+    if (destinationType === "till" && !mpesaTill) return json({ error: "Enter the apartment's Till number." }, 400);
+    if (destinationType === "bank" && !bankAccountNumber) return json({ error: "Enter the apartment's bank account number." }, 400);
     if (bankAccountNumber && !/^[A-Za-z0-9-]{5,64}$/.test(bankAccountNumber)) {
       return json({ error: "Enter a valid bank account number." }, 400);
     }
@@ -57,9 +64,7 @@ Deno.serve(async (req) => {
         (!bankAccountNumber || !bankName || !bankAccountName)) {
       return json({ error: "Bank name, account holder and account number must all be provided together." }, 400);
     }
-    if (isActive && !mpesaPaybill && !mpesaTill && !bankAccountNumber) {
-      return json({ error: "Add at least one M-Pesa or bank destination before activating collection." }, 400);
-    }
+
 
     const admin = createClient(url, serviceKey, {
       auth: { persistSession: false, autoRefreshToken: false },
