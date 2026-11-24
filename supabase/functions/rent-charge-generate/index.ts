@@ -32,6 +32,10 @@ Deno.serve(async (req) => {
       return json({ error: "Provide a property, billing month (YYYY-MM) and due date (YYYY-MM-DD)." }, 400);
     }
     const periodStart = `${period}-01`;
+    const parsedDueDate = new Date(`${dueDate}T00:00:00.000Z`);
+    if (Number.isNaN(parsedDueDate.getTime()) || parsedDueDate.toISOString().slice(0, 10) !== dueDate) {
+      return json({ error: "Enter a real calendar due date." }, 400);
+    }
     if (dueDate < periodStart) return json({ error: "The due date cannot be before the billing month." }, 400);
 
     const admin = createClient(url, serviceKey, {
