@@ -333,12 +333,12 @@ class _LandlordDashboardPageState extends State<LandlordDashboardPage> {
       child: Scaffold(
       body: IndexedStack(index: _currentIndex, children: pages),
       bottomNavigationBar: NavigationBar(
-        height: 52,
+        height: 64,
         selectedIndex: _currentIndex,
         onDestinationSelected: _openPage,
-        labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+        labelBehavior: NavigationDestinationLabelBehavior.onlyShowSelected,
         labelTextStyle: const WidgetStatePropertyAll(
-          TextStyle(fontSize: 9, fontWeight: FontWeight.w500),
+          TextStyle(fontSize: 10, fontWeight: FontWeight.w500),
         ),
 
         indicatorShape: RoundedRectangleBorder(
@@ -346,43 +346,43 @@ class _LandlordDashboardPageState extends State<LandlordDashboardPage> {
         ),
         destinations: const [
           NavigationDestination(
-            icon: Icon(Icons.dashboard_outlined, size: 16),
-            selectedIcon: Icon(Icons.dashboard, size: 16),
+            icon: Icon(Icons.dashboard_outlined, size: 20),
+            selectedIcon: Icon(Icons.dashboard, size: 20),
             label: 'Dashboard',
           ),
           NavigationDestination(
-            icon: Icon(Icons.calendar_month_outlined, size: 16),
-            selectedIcon: Icon(Icons.calendar_month, size: 16),
+            icon: Icon(Icons.calendar_month_outlined, size: 20),
+            selectedIcon: Icon(Icons.calendar_month, size: 20),
             label: 'Booking',
           ),
           NavigationDestination(
-            icon: Icon(Icons.apartment_outlined, size: 16),
-            selectedIcon: Icon(Icons.apartment, size: 16),
+            icon: Icon(Icons.apartment_outlined, size: 20),
+            selectedIcon: Icon(Icons.apartment, size: 20),
             label: 'Apartment',
           ),
           NavigationDestination(
-            icon: Icon(Icons.people_outline, size: 16),
-            selectedIcon: Icon(Icons.people, size: 16),
+            icon: Icon(Icons.people_outline, size: 20),
+            selectedIcon: Icon(Icons.people, size: 20),
             label: 'Tenants',
           ),
           NavigationDestination(
-            icon: Icon(Icons.chat_bubble_outline, size: 16),
-            selectedIcon: Icon(Icons.chat_bubble, size: 16),
+            icon: Icon(Icons.chat_bubble_outline, size: 20),
+            selectedIcon: Icon(Icons.chat_bubble, size: 20),
             label: 'Messages',
           ),
           NavigationDestination(
-            icon: Icon(Icons.payments_outlined, size: 16),
-            selectedIcon: Icon(Icons.payments, size: 16),
+            icon: Icon(Icons.payments_outlined, size: 20),
+            selectedIcon: Icon(Icons.payments, size: 20),
             label: 'Payments',
           ),
           NavigationDestination(
-            icon: Icon(Icons.notifications_outlined, size: 16),
-            selectedIcon: Icon(Icons.notifications, size: 16),
+            icon: Icon(Icons.notifications_outlined, size: 20),
+            selectedIcon: Icon(Icons.notifications, size: 20),
             label: 'Alerts',
           ),
           NavigationDestination(
-            icon: Icon(Icons.settings_outlined, size: 16),
-            selectedIcon: Icon(Icons.settings, size: 16),
+            icon: Icon(Icons.settings_outlined, size: 20),
+            selectedIcon: Icon(Icons.settings, size: 20),
             label: 'Settings',
           ),
         ],
