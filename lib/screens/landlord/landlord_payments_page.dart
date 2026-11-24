@@ -292,7 +292,6 @@ class _LandlordPaymentsPageState extends State<LandlordPaymentsPage> {
       final paid = double.tryParse(charge['amount_paid']?.toString() ?? '0') ?? 0;
       return sum + (due - paid).clamp(0, double.infinity).toDouble();
     });
-    final today = DateTime.now().toIso8601String().substring(0, 10);
     final overdueCount = _charges.where((charge) {
       final dueDate = DateTime.tryParse(charge['due_date']?.toString() ?? '');
       return charge['status'] != 'paid' &&
