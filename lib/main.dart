@@ -6728,116 +6728,161 @@ class _ApartmentsPageState extends State<ApartmentsPage> {
           style: TextStyle(fontWeight: FontWeight.bold),
         ),
       ),
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
-            child: TextField(
-              onChanged: (value) {
-                setState(() {
-                  searchQuery = value;
-                });
-              },
-              decoration: InputDecoration(
-                hintText: 'Search apartment or location...',
-                prefixIcon: const Icon(Icons.search_rounded),
-                suffixIcon: searchQuery.isNotEmpty
-                    ? IconButton(
-                        icon: const Icon(Icons.clear_rounded),
-                        onPressed: () {
-                          setState(() {
-                            searchQuery = '';
-                          });
-                        },
-                      )
-                    : null,
-                filled: true,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(16),
-                  borderSide: BorderSide.none,
-                ),
-              ),
-            ),
-          ),
-
-          // ACTIVE FILTERS
-          if (hasFilters)
-            SizedBox(
-              height: 42,
-              child: ListView(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: 16),
+      body: CustomScrollView(
+        slivers: [
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 10),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  if (selectedCounty != null)
-                    _filterChip(Icons.location_city_outlined, selectedCounty!),
-                  if (selectedSubcounty != null)
-                    _filterChip(Icons.map_outlined, selectedSubcounty!),
-                  if (selectedHouseType != null)
-                    _filterChip(Icons.home_work_outlined, selectedHouseType!),
-                  if (minimumRent != null || maximumRent != null)
-                    _filterChip(Icons.payments_outlined, _rentFilterLabel()),
-                  ActionChip(
-                    label: const Text('Clear'),
-                    avatar: const Icon(Icons.close, size: 17),
-                    onPressed: _clearFilters,
+                  const Text(
+                    'Find your next home',
+                    style: TextStyle(
+                      fontSize: 25,
+                      fontWeight: FontWeight.w800,
+                      color: Color(0xFF0B3D2E),
+                    ),
+                  ),
+                  const SizedBox(height: 5),
+                  Text(
+                    'Search apartments and connect with landlords.',
+                    style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          onChanged: (value) => setState(() => searchQuery = value),
+                          decoration: InputDecoration(
+                            hintText: 'Search apartments or locations',
+                            prefixIcon: const Icon(Icons.search_rounded),
+                            suffixIcon: searchQuery.isEmpty
+                                ? null
+                                : IconButton(
+                                    icon: const Icon(Icons.close_rounded),
+                                    onPressed: () => setState(() => searchQuery = ''),
+                                  ),
+                            filled: true,
+                            fillColor: Colors.white,
+                            contentPadding: const EdgeInsets.symmetric(vertical: 13),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(15),
+                              borderSide: BorderSide(color: Colors.grey.shade300),
+                            ),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(15),
+                              borderSide: BorderSide(color: Colors.grey.shade300),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 9),
+                      Material(
+                        color: const Color(0xFF0B3D2E),
+                        borderRadius: BorderRadius.circular(14),
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(14),
+                          onTap: _openFilters,
+                          child: SizedBox(
+                            width: 50,
+                            height: 52,
+                            child: Stack(
+                              alignment: Alignment.center,
+                              children: [
+                                const Icon(Icons.tune_rounded, color: Colors.white),
+                                if (hasFilters)
+                                  Positioned(
+                                    right: 9,
+                                    top: 8,
+                                    child: Container(
+                                      width: 8,
+                                      height: 8,
+                                      decoration: const BoxDecoration(
+                                        color: Colors.orange,
+                                        shape: BoxShape.circle,
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (hasFilters) ...[
+                    const SizedBox(height: 9),
+                    SizedBox(
+                      height: 38,
+                      child: ListView(
+                        scrollDirection: Axis.horizontal,
+                        children: [
+                          if (selectedCounty != null)
+                            _filterChip(Icons.location_city_outlined, selectedCounty!),
+                          if (selectedSubcounty != null)
+                            _filterChip(Icons.map_outlined, selectedSubcounty!),
+                          if (selectedHouseType != null)
+                            _filterChip(Icons.home_work_outlined, selectedHouseType!),
+                          if (minimumRent != null || maximumRent != null)
+                            _filterChip(Icons.payments_outlined, _rentFilterLabel()),
+                          ActionChip(
+                            label: const Text('Clear'),
+                            avatar: const Icon(Icons.close, size: 16),
+                            onPressed: _clearFilters,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 14),
+                  Row(
+                    children: [
+                      Text(
+                        '${results.length} properties found',
+                        style: const TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                      const Spacer(),
+                      if (hasFilters)
+                        TextButton(
+                          onPressed: _clearFilters,
+                          child: const Text('Clear filters'),
+                        ),
+                    ],
                   ),
                 ],
               ),
             ),
-
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-            child: Row(
-              children: [
-                Text(
-                  '${results.length} apartments',
-                  style: TextStyle(
-                    color: Colors.grey.shade700,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const Spacer(),
-                if (hasFilters)
-                  Text(
-                    'Filters active',
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.primary,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
+          ),
+          if (results.isEmpty)
+            SliverFillRemaining(
+              hasScrollBody: false,
+              child: _emptyState(),
+            )
+          else
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(14, 2, 14, 24),
+              sliver: SliverLayoutBuilder(
+                builder: (context, constraints) {
+                  final width = constraints.crossAxisExtent;
+                  final columns = width < 600 ? 2 : width < 1000 ? 3 : 4;
+                  return SliverGrid(
+                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: columns,
+                      crossAxisSpacing: 10,
+                      mainAxisSpacing: 10,
+                      childAspectRatio: width < 600 ? 0.57 : 0.72,
                     ),
-                  ),
-              ],
+                    delegate: SliverChildBuilderDelegate(
+                      (context, index) => _propertyCard(results[index]),
+                      childCount: results.length,
+                    ),
+                  );
+                },
+              ),
             ),
-          ),
-
-          Expanded(
-            child: results.isEmpty
-                ? _emptyState()
-                : ListView.builder(
-                    padding: const EdgeInsets.fromLTRB(16, 4, 16, 100),
-                    itemCount: results.length,
-                    itemBuilder: (context, index) {
-                      return _propertyCard(results[index]);
-                    },
-                  ),
-          ),
         ],
-      ),
-
-      // YOUR REQUESTED FILTER BUTTON AT THE BOTTOM
-      bottomNavigationBar: SafeArea(
-        minimum: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-        child: SizedBox(
-          height: 52,
-          child: FilledButton.icon(
-            onPressed: _openFilters,
-            icon: const Icon(Icons.tune_rounded),
-            label: Text(
-              hasFilters ? 'FILTERS ACTIVE' : 'FILTER APARTMENTS',
-              style: const TextStyle(fontWeight: FontWeight.bold),
-            ),
-          ),
-        ),
       ),
     );
   }
@@ -6865,156 +6910,82 @@ class _ApartmentsPageState extends State<ApartmentsPage> {
     final units = unitsForProperty(property.id);
     final available = availableUnits(property);
     final images = propertyImages(property.id);
-
     final primary = Theme.of(context).colorScheme.primary;
-    final surface = Theme.of(context).colorScheme.surface;
 
     return Card(
-      elevation: 1,
-      margin: const EdgeInsets.only(bottom: 6),
+      elevation: 2,
+      margin: EdgeInsets.zero,
       clipBehavior: Clip.antiAlias,
-      color: surface,
+      color: Colors.white,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: primary.withValues(alpha: 0.08)),
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: primary.withValues(alpha: 0.10)),
       ),
       child: InkWell(
         onTap: () => _showPropertyDetails(property),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             SizedBox(
-              width: 105,
-              height: 118,
+              height: 112,
               child: _propertyImage(property, images),
             ),
-
             Expanded(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(9, 7, 8, 7),
+                padding: const EdgeInsets.fromLTRB(9, 9, 9, 8),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       property.name,
-                      maxLines: 1,
+                      maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                        color: primary,
+                      style: const TextStyle(
+                        color: Color(0xFF17211D),
+                        fontSize: 13,
+                        fontWeight: FontWeight.w800,
                       ),
                     ),
-
-                    const SizedBox(height: 2),
-
+                    const SizedBox(height: 5),
                     Row(
                       children: [
-                        Icon(
-                          Icons.location_on_rounded,
-                          size: 12,
-                          color: primary.withValues(alpha: 0.75),
-                        ),
-                        const SizedBox(width: 2),
+                        const Icon(Icons.location_on_outlined,
+                            size: 13, color: Colors.black54),
+                        const SizedBox(width: 3),
                         Expanded(
                           child: Text(
                             propertyLocation(property),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: const TextStyle(
-                              fontSize: 9.5,
+                              fontSize: 10,
                               color: Colors.black54,
                             ),
                           ),
                         ),
                       ],
                     ),
-
-                    const SizedBox(height: 3),
-
-                    Text(
-                      propertyDescription(property),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 9.5,
-                        color: Colors.black45,
-                      ),
-                    ),
-
-                    const SizedBox(height: 5),
-
-                    Row(
+                    const SizedBox(height: 7),
+                    Wrap(
+                      spacing: 4,
+                      runSpacing: 4,
                       children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 5,
-                            vertical: 3,
-                          ),
-                          decoration: BoxDecoration(
-                            color: primary.withValues(alpha: 0.09),
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                Icons.apartment_rounded,
-                                size: 11,
-                                color: primary,
-                              ),
-                              const SizedBox(width: 2),
-                              Text(
-                                '${units.length}',
-                                style: TextStyle(
-                                  fontSize: 9,
-                                  fontWeight: FontWeight.w700,
-                                  color: primary,
-                                ),
-                              ),
-                            ],
-                          ),
+                        _compactPropertyTag(
+                          Icons.apartment_outlined,
+                          '${units.length} units',
+                          primary,
                         ),
-
-                        const SizedBox(width: 4),
-
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 5,
-                            vertical: 3,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.green.withValues(alpha: 0.10),
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Icon(
-                                Icons.check_circle_rounded,
-                                size: 11,
-                                color: Colors.green,
-                              ),
-                              const SizedBox(width: 2),
-                              Text(
-                                '$available available',
-                                style: const TextStyle(
-                                  fontSize: 9,
-                                  fontWeight: FontWeight.w700,
-                                  color: Colors.green,
-                                ),
-                              ),
-                            ],
-                          ),
+                        _compactPropertyTag(
+                          Icons.check_circle_outline,
+                          '$available vacant',
+                          Colors.green.shade700,
                         ),
                       ],
                     ),
-
-                    const SizedBox(height: 5),
-
+                    const Spacer(),
                     SizedBox(
-                      height: 25,
                       width: double.infinity,
+                      height: 34,
                       child: FilledButton(
                         onPressed: () => _showPropertyDetails(property),
                         style: FilledButton.styleFrom(
@@ -7023,7 +6994,7 @@ class _ApartmentsPageState extends State<ApartmentsPage> {
                           visualDensity: VisualDensity.compact,
                           tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                           shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(7),
+                            borderRadius: BorderRadius.circular(9),
                           ),
                         ),
                         child: const Text(
@@ -7041,6 +7012,31 @@ class _ApartmentsPageState extends State<ApartmentsPage> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _compactPropertyTag(IconData icon, String label, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 5),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.09),
+        borderRadius: BorderRadius.circular(7),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 11, color: color),
+          const SizedBox(width: 3),
+          Text(
+            label,
+            style: TextStyle(
+              color: color,
+              fontSize: 9,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
       ),
     );
   }
