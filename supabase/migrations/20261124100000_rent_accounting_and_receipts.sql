@@ -102,6 +102,7 @@ create policy "Property managers read rent allocations"
 
 revoke all on public.rent_charge_records, public.rent_payment_allocations from anon, authenticated;
 grant select on public.rent_charge_records, public.rent_payment_allocations to authenticated;
+grant select, insert, update, delete on public.rent_charge_records, public.rent_payment_allocations to service_role;
 
 -- Apply a verified payment to the tenant's oldest unpaid charges first.
 -- Any excess remains as a tenant rent credit in unallocated_amount.
