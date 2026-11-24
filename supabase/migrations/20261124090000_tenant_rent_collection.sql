@@ -85,3 +85,19 @@ comment on table public.rent_payment_records is
   'Tenant rent ledger; deliberately separate from JUMAA subscription billing.';
 comment on table public.rent_collection_accounts is
   'Landlord-designated M-Pesa and bank payment instructions per property. No JUMAA custody of rent.';
+
+-- Reuse already configured landlord-owned M-Pesa destinations where present.
+-- This does not create a new JUMAA collection destination.
+insert into public.rent_collection_accounts (
+  property_id, mpesa_paybill, mpesa_till, mpesa_account_reference, is_active
+)
+select
+  p.id,
+  nullif(trim(p.mpesa_paybill_number), ''),
+  nullif(trim(p.mpesa_till_number), ''),
+  nullif(trim(p.mpesa_account_number), ''),
+  coalesce(p.payments_enabled, false)
+from public.properties p
+where nullif(trim(coalesce(p.mpesa_paybill_number, '')), '') is not null
+   or nullif(trim(coalesce(p.mpesa_till_number, '')), '') is not null
+on conflict (property_id) do nothing;
