@@ -17723,7 +17723,7 @@ class _PublicUserPageState extends State<PublicUserPage> {
 
   Widget _propertyCard(_PublicPropertyListing listing) {
     final property = listing.property;
-    final compact = MediaQuery.sizeOf(context).width < 600;
+    final compact = MediaQuery.sizeOf(context).width < 850;
 
     final images = <String>[
       ...property.imagePaths,
