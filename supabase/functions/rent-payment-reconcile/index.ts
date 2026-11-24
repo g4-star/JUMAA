@@ -37,10 +37,12 @@ Deno.serve(async (req) => {
 
     // This is an auditable manual reconciliation action. The operator must
     // independently confirm funds in the landlord's M-Pesa/bank statement.
+    const receiptNumber = `JUMAA-R-${new Date().getUTCFullYear()}-${crypto.randomUUID().replaceAll("-", "").slice(0, 10).toUpperCase()}`;
     const { data: updated, error: updateError } = await admin.from("rent_payment_records")
       .update({
         status: "verified",
         provider_reference: providerReference,
+        receipt_number: receiptNumber,
         verified_at: new Date().toISOString(),
         verified_by: user.id,
         notes: note,
