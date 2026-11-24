@@ -32,6 +32,7 @@ class _LandlordPaymentsPageState extends State<LandlordPaymentsPage> {
   bool _loading = true;
   bool _savingAccount = false;
   bool _accountActive = false;
+  String _destinationType = 'paybill';
   String? _error;
   List<Map<String, dynamic>> _payments = [];
   List<Map<String, dynamic>> _charges = [];
@@ -65,6 +66,12 @@ class _LandlordPaymentsPageState extends State<LandlordPaymentsPage> {
       if (!mounted || row == null) return;
       setState(() {
         _paybill.text = row['mpesa_paybill']?.toString() ?? '';
+        _destinationType = (row['mpesa_till']?.toString().isNotEmpty ?? false)
+            ? 'till'
+            : ((row['bank_account_number']?.toString().isNotEmpty ?? false) &&
+                    (row['mpesa_paybill']?.toString().isNotEmpty ?? false) == false
+                ? 'bank'
+                : 'paybill');
         _till.text = row['mpesa_till']?.toString() ?? '';
         _mpesaReference.text = row['mpesa_account_reference']?.toString() ?? '';
         _bankName.text = row['bank_name']?.toString() ?? '';
@@ -86,8 +93,9 @@ class _LandlordPaymentsPageState extends State<LandlordPaymentsPage> {
         'rent-collection-account-configure',
         body: {
           'property_id': _propertyId,
-          'mpesa_paybill': _paybill.text.trim(),
-          'mpesa_till': _till.text.trim(),
+          'destination_type': _destinationType,
+          'mpesa_paybill': _destinationType == 'paybill' ? _paybill.text.trim() : '',
+          'mpesa_till': _destinationType == 'till' ? _till.text.trim() : '',
           'mpesa_account_reference': _mpesaReference.text.trim(),
           'bank_name': _bankName.text.trim(),
           'bank_account_name': _bankAccountName.text.trim(),
@@ -293,19 +301,31 @@ class _LandlordPaymentsPageState extends State<LandlordPaymentsPage> {
             child: ExpansionTile(
               initiallyExpanded: false,
               title: const Text('Payment account settings', style: TextStyle(fontWeight: FontWeight.w800)),
-              subtitle: const Text('Set the M-Pesa and bank destination for this property'),
+              subtitle: const Text('Choose exactly one payment destination for this apartment'),
               childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
               children: [
-                Align(alignment: Alignment.centerLeft, child: Text('M-Pesa', style: Theme.of(context).textTheme.titleMedium)),
-                _field('Paybill number', _paybill, keyboardType: TextInputType.number),
-                _field('Till number', _till, keyboardType: TextInputType.number),
-                _field('Account reference / account number', _mpesaReference),
-                const Divider(height: 24),
-                Align(alignment: Alignment.centerLeft, child: Text('Bank transfer', style: Theme.of(context).textTheme.titleMedium)),
-                _field('Bank name', _bankName),
-                _field('Account holder name', _bankAccountName),
-                _field('Account number', _bankAccountNumber, keyboardType: TextInputType.text),
-                _field('Branch', _bankBranch),
+                DropdownButtonFormField<String>(
+                  value: _destinationType,
+                  decoration: const InputDecoration(labelText: 'Payment destination type', border: OutlineInputBorder()),
+                  items: const [
+                    DropdownMenuItem(value: 'paybill', child: Text('M-Pesa Paybill')),
+                    DropdownMenuItem(value: 'till', child: Text('M-Pesa Till')),
+                    DropdownMenuItem(value: 'bank', child: Text('Bank account')),
+                  ],
+                  onChanged: (value) => setState(() => _destinationType = value ?? 'paybill'),
+                ),
+                const SizedBox(height: 12),
+                if (_destinationType == 'paybill') ...[
+                  _field('Paybill number', _paybill, keyboardType: TextInputType.number),
+                  _field('Paybill account number / reference', _mpesaReference),
+                ] else if (_destinationType == 'till')
+                  _field('Till number', _till, keyboardType: TextInputType.number)
+                else ...[
+                  _field('Bank name', _bankName),
+                  _field('Account holder name', _bankAccountName),
+                  _field('Bank account number', _bankAccountNumber, keyboardType: TextInputType.text),
+                  _field('Branch', _bankBranch),
+                ],
                 _field('Additional tenant instructions', _instructions),
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
