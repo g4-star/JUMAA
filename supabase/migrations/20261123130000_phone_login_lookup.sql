@@ -1,3 +1,13 @@
+
+-- Backfill phone numbers captured in Supabase Auth metadata for older accounts.
+-- This does not overwrite a phone number already stored on the profile.
+update public.profiles as p
+set phone = nullif(btrim(u.raw_user_meta_data ->> 'phone'), '')
+from auth.users as u
+where u.id = p.id
+  and (p.phone is null or btrim(p.phone) = '')
+  and nullif(btrim(u.raw_user_meta_data ->> 'phone'), '') is not null;
+
 -- Resolve a phone number to a profile only for the server-side phone-login flow.
 -- The function deliberately returns only the minimum fields needed by the Edge Function.
 -- It is not executable by anon or authenticated clients.
