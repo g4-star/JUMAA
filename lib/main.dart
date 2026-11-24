@@ -731,6 +731,8 @@ class _OpenNestAuthGateState extends State<OpenNestAuthGate> {
         });
       }
     } catch (e) {
+      debugPrint('AUTH RESTORE: could not validate the saved session: $e');
+      await OpenNestStore.supabase.auth.signOut();
       if (mounted) {
         setState(() {
           _loggedIn = false;
@@ -18601,6 +18603,7 @@ class _JUMAALoginPageState extends State<JUMAALoginPage> {
         'This account is not registered as a JUMAA owner or landlord account.',
       );
     } on AuthException catch (e) {
+      await OpenNestStore.supabase.auth.signOut();
       if (!mounted) return;
 
       setState(() {
@@ -18618,6 +18621,7 @@ class _JUMAALoginPageState extends State<JUMAALoginPage> {
         ),
       );
     } catch (e) {
+      await OpenNestStore.supabase.auth.signOut();
       if (!mounted) return;
 
       setState(() {
