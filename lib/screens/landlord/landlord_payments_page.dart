@@ -12,7 +12,17 @@ class LandlordPaymentsPage extends StatefulWidget {
 
 class _LandlordPaymentsPageState extends State<LandlordPaymentsPage> {
   final _client = Supabase.instance.client;
+  final _paybill = TextEditingController();
+  final _till = TextEditingController();
+  final _mpesaReference = TextEditingController();
+  final _bankName = TextEditingController();
+  final _bankAccountName = TextEditingController();
+  final _bankAccountNumber = TextEditingController();
+  final _bankBranch = TextEditingController();
+  final _instructions = TextEditingController();
   bool _loading = true;
+  bool _savingAccount = false;
+  bool _accountActive = false;
   String? _error;
   List<Map<String, dynamic>> _payments = [];
 
@@ -20,13 +30,85 @@ class _LandlordPaymentsPageState extends State<LandlordPaymentsPage> {
   void initState() {
     super.initState();
     _loadPayments();
+    _loadAccount();
+  }
+
+  @override
+  void dispose() {
+    _paybill.dispose();
+    _till.dispose();
+    _mpesaReference.dispose();
+    _bankName.dispose();
+    _bankAccountName.dispose();
+    _bankAccountNumber.dispose();
+    _bankBranch.dispose();
+    _instructions.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadAccount() async {
+    try {
+      final row = await _client.from('rent_collection_accounts')
+          .select('mpesa_paybill,mpesa_till,mpesa_account_reference,bank_name,bank_account_name,bank_account_number,bank_branch,payment_instructions,is_active')
+          .eq('property_id', widget.landlord.propertyId)
+          .maybeSingle();
+      if (!mounted || row == null) return;
+      setState(() {
+        _paybill.text = row['mpesa_paybill']?.toString() ?? '';
+        _till.text = row['mpesa_till']?.toString() ?? '';
+        _mpesaReference.text = row['mpesa_account_reference']?.toString() ?? '';
+        _bankName.text = row['bank_name']?.toString() ?? '';
+        _bankAccountName.text = row['bank_account_name']?.toString() ?? '';
+        _bankAccountNumber.text = row['bank_account_number']?.toString() ?? '';
+        _bankBranch.text = row['bank_branch']?.toString() ?? '';
+        _instructions.text = row['payment_instructions']?.toString() ?? '';
+        _accountActive = row['is_active'] == true;
+      });
+    } catch (e) {
+      debugPrint('Rent collection account could not be loaded: $e');
+    }
+  }
+
+  Future<void> _saveAccount() async {
+    setState(() => _savingAccount = true);
+    try {
+      final response = await _client.functions.invoke(
+        'rent-collection-account-configure',
+        body: {
+          'property_id': widget.landlord.propertyId,
+          'mpesa_paybill': _paybill.text.trim(),
+          'mpesa_till': _till.text.trim(),
+          'mpesa_account_reference': _mpesaReference.text.trim(),
+          'bank_name': _bankName.text.trim(),
+          'bank_account_name': _bankAccountName.text.trim(),
+          'bank_account_number': _bankAccountNumber.text.trim(),
+          'bank_branch': _bankBranch.text.trim(),
+          'payment_instructions': _instructions.text.trim(),
+          'is_active': _accountActive,
+        },
+      );
+      if (response.data is Map && response.data['success'] != true) {
+        throw Exception(response.data['error'] ?? 'Could not save payment details.');
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(response.data['message']?.toString() ?? 'Collection account saved.')),
+        );
+      }
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not save collection account: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _savingAccount = false);
+    }
   }
 
   Future<void> _loadPayments() async {
     setState(() { _loading = true; _error = null; });
     try {
       final rows = await _client.from('rent_payment_records')
-          .select('id,tenant_id,property_id,unit_id,amount,payment_method,status,payment_reference,provider_reference,submitted_at,created_at')
+          .select('id,tenant_id,property_id,unit_id,amount,payment_method,status,payment_reference,provider_reference,receipt_number,rejection_reason,submitted_at,created_at,verified_at')
           .eq('property_id', widget.landlord.propertyId)
           .order('created_at', ascending: false);
       if (!mounted) return;
@@ -53,17 +135,78 @@ class _LandlordPaymentsPageState extends State<LandlordPaymentsPage> {
     );
     if (confirmed != true) return;
     try {
-      await _client.functions.invoke('rent-payment-reconcile', body: {
+      final response = await _client.functions.invoke('rent-payment-reconcile', body: {
         'payment_id': payment['id'],
         'provider_reference': ref,
         'verification_note': 'Manually checked against landlord account statement.',
       });
+      if (response.data is Map && response.data['success'] != true) {
+        throw Exception(response.data['error'] ?? 'Verification failed.');
+      }
       await _loadPayments();
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Rent payment verified.')));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Verified. Receipt ${response.data['payment']?['receipt_number'] ?? ''}')),
+      );
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Verification failed: $e')));
     }
   }
+
+  Future<void> _reject(Map<String, dynamic> payment) async {
+    final controller = TextEditingController();
+    final reason = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Reject payment submission'),
+        content: TextField(
+          controller: controller,
+          maxLines: 3,
+          decoration: const InputDecoration(labelText: 'Reason (at least 8 characters)'),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, controller.text.trim()), child: const Text('Reject')),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (reason == null || reason.length < 8) return;
+    try {
+      final response = await _client.functions.invoke('rent-payment-reject', body: {
+        'payment_id': payment['id'],
+        'rejection_reason': reason,
+      });
+      if (response.data is Map && response.data['success'] != true) {
+        throw Exception(response.data['error'] ?? 'Could not reject payment.');
+      }
+      await _loadPayments();
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Rejection failed: $e')));
+    }
+  }
+
+  Widget _field(String label, TextEditingController controller, {String? hint, TextInputType? keyboardType}) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: TextField(
+        controller: controller,
+        keyboardType: keyboardType,
+        decoration: InputDecoration(labelText: label, hintText: hint, border: const OutlineInputBorder()),
+      ),
+    );
+  }
+
+  Widget _metric(String label, String value, IconData icon, Color color) => Card(
+    child: Padding(
+      padding: const EdgeInsets.symmetric(vertical: 13, horizontal: 5),
+      child: Column(children: [
+        Icon(icon, color: color, size: 20),
+        const SizedBox(height: 5),
+        Text(value, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15), textAlign: TextAlign.center),
+        Text(label, style: const TextStyle(fontSize: 10, color: Colors.black54)),
+      ]),
+    ),
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -74,52 +217,99 @@ class _LandlordPaymentsPageState extends State<LandlordPaymentsPage> {
       appBar: AppBar(title: const Text('Rent collection', style: TextStyle(fontWeight: FontWeight.bold)), actions: [
         IconButton(onPressed: _loadPayments, icon: const Icon(Icons.refresh)),
       ]),
-      body: _loading ? const Center(child: CircularProgressIndicator())
-        : _error != null ? Center(child: Padding(padding: const EdgeInsets.all(20), child: Text('Could not load rent payments: $_error')))
-        : RefreshIndicator(onRefresh: _loadPayments, child: ListView(padding: const EdgeInsets.all(16), children: [
-            Text(widget.landlord.propertyName, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
-            const SizedBox(height: 12),
-            Row(children: [
-              Expanded(child: _metric('Verified', verified.length.toString(), Icons.verified, Colors.green)),
-              const SizedBox(width: 8),
-              Expanded(child: _metric('Awaiting', awaiting.length.toString(), Icons.pending_actions, Colors.orange)),
-              const SizedBox(width: 8),
-              Expanded(child: _metric('Collected', 'KSh ${total.toStringAsFixed(0)}', Icons.account_balance_wallet, Colors.indigo)),
-            ]),
-            const SizedBox(height: 20),
-            const Text('Tenant rent payments', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
-            const SizedBox(height: 8),
-            if (_payments.isEmpty) const Card(child: Padding(padding: EdgeInsets.all(24), child: Text('No rent payments have been initiated yet.')))
-            else ..._payments.map((p) {
-              final status = p['status'].toString();
-              final amount = double.tryParse(p['amount'].toString()) ?? 0;
-              final ref = p['provider_reference']?.toString() ?? '';
-              return Card(margin: const EdgeInsets.only(bottom: 9), child: Padding(padding: const EdgeInsets.all(12), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Row(children: [
-                  Expanded(child: Text('KSh ${amount.toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 17))),
-                  Chip(label: Text(status.toUpperCase())),
+      body: RefreshIndicator(
+        onRefresh: _loadPayments,
+        child: ListView(padding: const EdgeInsets.all(16), children: [
+          Text(widget.landlord.propertyName, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 12),
+          Card(
+            child: ExpansionTile(
+              initiallyExpanded: false,
+              title: const Text('Payment account settings', style: TextStyle(fontWeight: FontWeight.w800)),
+              subtitle: const Text('Set the M-Pesa and bank destination for this property'),
+              childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              children: [
+                Align(alignment: Alignment.centerLeft, child: Text('M-Pesa', style: Theme.of(context).textTheme.titleMedium)),
+                _field('Paybill number', _paybill, keyboardType: TextInputType.number),
+                _field('Till number', _till, keyboardType: TextInputType.number),
+                _field('Account reference / account number', _mpesaReference),
+                const Divider(height: 24),
+                Align(alignment: Alignment.centerLeft, child: Text('Bank transfer', style: Theme.of(context).textTheme.titleMedium)),
+                _field('Bank name', _bankName),
+                _field('Account holder name', _bankAccountName),
+                _field('Account number', _bankAccountNumber, keyboardType: TextInputType.text),
+                _field('Branch', _bankBranch),
+                _field('Additional tenant instructions', _instructions),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Enable rent collection instructions'),
+                  subtitle: const Text('Tenants can see these details when active.'),
+                  value: _accountActive,
+                  onChanged: (value) => setState(() => _accountActive = value),
+                ),
+                SizedBox(width: double.infinity, child: FilledButton.icon(
+                  onPressed: _savingAccount ? null : _saveAccount,
+                  icon: _savingAccount ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.save),
+                  label: Text(_savingAccount ? 'Saving...' : 'Save payment account'),
+                )),
+                const SizedBox(height: 8),
+                const Text('Only enter an account belonging to the property owner/landlord. JUMAA does not receive tenant rent.', style: TextStyle(color: Colors.black54, fontSize: 12)),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          Row(children: [
+            Expanded(child: _metric('Verified', verified.length.toString(), Icons.verified, Colors.green)),
+            const SizedBox(width: 8),
+            Expanded(child: _metric('Awaiting', awaiting.length.toString(), Icons.pending_actions, Colors.orange)),
+            const SizedBox(width: 8),
+            Expanded(child: _metric('Collected', 'KSh ${total.toStringAsFixed(0)}', Icons.account_balance_wallet, Colors.indigo)),
+          ]),
+          const SizedBox(height: 20),
+          const Text('Tenant rent payments', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 8),
+          if (_loading) const Center(child: Padding(padding: EdgeInsets.all(24), child: CircularProgressIndicator()))
+          else if (_error != null) Text('Could not load rent payments: $_error')
+          else if (_payments.isEmpty) const Card(child: Padding(padding: EdgeInsets.all(24), child: Text('No rent payments have been initiated yet.')))
+          else ..._payments.map((p) {
+            final status = p['status'].toString();
+            final amount = double.tryParse(p['amount'].toString()) ?? 0;
+            final ref = p['provider_reference']?.toString() ?? '';
+            return Card(
+              margin: const EdgeInsets.only(bottom: 9),
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Row(children: [
+                    Expanded(child: Text('KSh ${amount.toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 17))),
+                    Chip(label: Text(status.toUpperCase())),
+                  ]),
+                  Text('${p['payment_method']} • Tenant ${p['tenant_id']}'),
+                  const SizedBox(height: 3),
+                  SelectableText('JUMAA ref: ${p['payment_reference']}'),
+                  if (ref.isNotEmpty) SelectableText('Transaction: $ref'),
+                  if (p['receipt_number'] != null) SelectableText('Receipt: ${p['receipt_number']}'),
+                  if (p['rejection_reason'] != null) Text('Reason: ${p['rejection_reason']}', style: const TextStyle(color: Colors.red)),
+                  if (status == 'submitted' && ref.isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    Row(children: [
+                      Expanded(child: FilledButton.icon(onPressed: () => _verify(p), icon: const Icon(Icons.verified), label: const Text('Verify'))),
+                      const SizedBox(width: 8),
+                      Expanded(child: OutlinedButton.icon(onPressed: () => _reject(p), icon: const Icon(Icons.close), label: const Text('Reject'))),
+                    ]),
+                  ],
+                  if (status == 'pending') ...[
+                    const Padding(padding: EdgeInsets.only(top: 6), child: Text('Waiting for tenant to submit the transaction code.', style: TextStyle(color: Colors.black54, fontSize: 12))),
+                    Align(alignment: Alignment.centerRight, child: TextButton(onPressed: () => _reject(p), child: const Text('Cancel / reject intent'))),
+                  ],
                 ]),
-                Text('${p['payment_method']} • Tenant ${p['tenant_id']}'),
-                const SizedBox(height: 3),
-                SelectableText('JUMAA ref: ${p['payment_reference']}'),
-                if (ref.isNotEmpty) SelectableText('Transaction: $ref'),
-                if (status == 'submitted' && ref.isNotEmpty) ...[
-                  const SizedBox(height: 8),
-                  SizedBox(width: double.infinity, child: FilledButton.icon(onPressed: () => _verify(p), icon: const Icon(Icons.verified), label: const Text('Verify money received'))),
-                ],
-                if (status == 'pending') const Padding(padding: EdgeInsets.only(top: 6), child: Text('Waiting for tenant to submit the transaction code.', style: TextStyle(color: Colors.black54, fontSize: 12))),
-              ])));
-            }),
-            const SizedBox(height: 12),
-            const Text('Only verify after checking the actual M-Pesa or bank statement. A tenant-submitted code alone is not proof of settlement.', style: TextStyle(color: Colors.black54, fontSize: 12, height: 1.4)),
-          ])),
+              ),
+            );
+          }),
+          const SizedBox(height: 12),
+          const Text('Only verify after checking the actual M-Pesa or bank statement. A tenant-submitted code alone is not proof of settlement.', style: TextStyle(color: Colors.black54, fontSize: 12, height: 1.4)),
+        ]),
+      ),
     );
   }
-
-  Widget _metric(String label, String value, IconData icon, Color color) => Card(child: Padding(padding: const EdgeInsets.symmetric(vertical: 13, horizontal: 5), child: Column(children: [
-    Icon(icon, color: color, size: 20),
-    const SizedBox(height: 5),
-    Text(value, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15), textAlign: TextAlign.center),
-    Text(label, style: const TextStyle(fontSize: 10, color: Colors.black54)),
-  ])));
 }
