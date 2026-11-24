@@ -23,6 +23,14 @@ function escapeHtml(value: string): string {
     .replaceAll("'", '&#39;');
 }
 
+function normalizeKenyanMobilePhone(value: string): string | null {
+  const digits = value.replace(/\D/g, '');
+  if (/^254[17]\d{8}$/.test(digits)) return digits;
+  if (/^0[17]\d{8}$/.test(digits)) return '254' + digits.slice(1);
+  if (/^[17]\d{8}$/.test(digits)) return '254' + digits;
+  return null;
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -88,6 +96,16 @@ Deno.serve(async (req) => {
     }
 
     const email = body.email.trim().toLowerCase();
+    const phone = normalizeKenyanMobilePhone(body.phone);
+    if (!phone) {
+      return new Response(JSON.stringify({
+        success: false,
+        error: 'Enter a valid Kenyan mobile number, e.g. 0712345678 or +254712345678.',
+      }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
 
     // ----------------------------------------------------------
     // 1. Verify that the tenant record exists.
@@ -217,7 +235,7 @@ Deno.serve(async (req) => {
           email_confirm: true,
           user_metadata: {
             full_name: body.full_name,
-            phone: body.phone,
+            phone,
             role: 'tenant',
             tenant_id: body.tenant_id,
           },
@@ -292,7 +310,7 @@ Deno.serve(async (req) => {
           id: authUserId,
           email,
           full_name: body.full_name,
-          phone: body.phone,
+          phone,
           role: 'tenant',
           must_reset_password: true,
           mfa_required: true,
