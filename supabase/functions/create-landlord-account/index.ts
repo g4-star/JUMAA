@@ -55,7 +55,7 @@ Deno.serve(async (req) => {
         status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
-  try {
+
     if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
       throw new Error('Supabase service credentials are not configured.');
     }
@@ -111,7 +111,8 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ success: false, error: 'Only the owner of this property can assign its landlord.' }), {
         status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
-    }    const email = body.email.trim().toLowerCase();
+    }
+
 
     // ----------------------------------------------------------
     // 1. Check whether this email already has a profile.
