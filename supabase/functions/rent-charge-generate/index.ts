@@ -45,9 +45,13 @@ Deno.serve(async (req) => {
     }
 
     const { data: tenants, error: tenantError } = await admin
-      .from("tenants").select("id,unit_id,account_status").eq("property_id", propertyId);
+      .from("tenants").select("id,unit_id,account_status,move_in_date").eq("property_id", propertyId);
     if (tenantError) throw tenantError;
-    const activeTenants = (tenants ?? []).filter((t) => t.unit_id && t.account_status !== "suspended");
+    const activeTenants = (tenants ?? []).filter((t) => {
+      if (!t.unit_id || t.account_status === "suspended") return false;
+      if (t.move_in_date && String(t.move_in_date).slice(0, 7) > period) return false;
+      return true;
+    });
     if (activeTenants.length === 0) return json({ success: true, created: 0, message: "No active tenants with assigned units were found." });
 
     const unitIds = [...new Set(activeTenants.map((t) => t.unit_id))];
