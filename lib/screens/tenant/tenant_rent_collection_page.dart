@@ -18,6 +18,7 @@ class _TenantRentCollectionPageState extends State<TenantRentCollectionPage> {
   String? _error;
   List<Map<String, dynamic>> _history = [];
   List<Map<String, dynamic>> _charges = [];
+  Map<String, dynamic>? _collectionAccount;
 
   double get _monthlyRent {
     final unit = widget.tenantProfile?['units'];
@@ -44,6 +45,16 @@ class _TenantRentCollectionPageState extends State<TenantRentCollectionPage> {
           .from('rent_payment_records')
           .select('id,amount,currency,payment_method,status,payment_reference,provider_reference,receipt_number,rejection_reason,unallocated_amount,created_at,verified_at')
           .order('created_at', ascending: false);
+      final propertyId = widget.tenantProfile?['property_id']?.toString();
+      Map<String, dynamic>? account;
+      if (propertyId != null && propertyId.isNotEmpty) {
+        account = await Supabase.instance.client
+            .from('rent_collection_accounts')
+            .select('mpesa_paybill,mpesa_till,mpesa_account_reference,bank_name,bank_account_name,bank_account_number,bank_branch,payment_instructions,is_active')
+            .eq('property_id', propertyId)
+            .eq('is_active', true)
+            .maybeSingle();
+      }
       final charges = await Supabase.instance.client
           .from('rent_charge_records')
           .select('id,period_start,due_date,amount_due,amount_paid,status')
@@ -52,6 +63,7 @@ class _TenantRentCollectionPageState extends State<TenantRentCollectionPage> {
       setState(() {
         _history = List<Map<String, dynamic>>.from(rows);
         _charges = List<Map<String, dynamic>>.from(charges);
+        _collectionAccount = account == null ? null : Map<String, dynamic>.from(account);
       });
     } catch (e) {
       debugPrint('Rent history unavailable: $e');
@@ -202,6 +214,51 @@ class _TenantRentCollectionPageState extends State<TenantRentCollectionPage> {
     }
   }
 
+  Widget _buildCollectionAccountCard() {
+    final account = _collectionAccount;
+    if (account == null) {
+      return const Card(child: Padding(
+        padding: EdgeInsets.all(16),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('Landlord payment details', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+          SizedBox(height: 6),
+          Text('Your apartment has not added payment details yet. Please contact your landlord.'),
+        ]),
+      ));
+    }
+    final paybill = account['mpesa_paybill']?.toString();
+    final till = account['mpesa_till']?.toString();
+    final bankNumber = account['bank_account_number']?.toString();
+    final isPaybill = paybill != null && paybill.isNotEmpty;
+    final isTill = till != null && till.isNotEmpty;
+    return Card(child: Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Row(children: [Icon(Icons.account_balance_wallet_outlined), SizedBox(width: 8), Text('Apartment payment destination', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16))]),
+        const SizedBox(height: 8),
+        if (isPaybill || isTill) ...[
+          Text(isPaybill ? 'M-Pesa Paybill' : 'M-Pesa Till', style: const TextStyle(color: Colors.black54)),
+          SelectableText(isPaybill ? paybill! : till!, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800, letterSpacing: 1)),
+          if (isPaybill && (account['mpesa_account_reference']?.toString().isNotEmpty ?? false))
+            _instruction('Account number', account['mpesa_account_reference'].toString()),
+        ] else if (bankNumber != null && bankNumber.isNotEmpty) ...[
+          _instruction('Bank', account['bank_name']?.toString() ?? ''),
+          _instruction('Account name', account['bank_account_name']?.toString() ?? ''),
+          _instruction('Account number', bankNumber),
+          if (account['bank_branch'] != null) _instruction('Branch', account['bank_branch'].toString()),
+        ] else ...[
+          const Text('No payment destination is configured.'),
+        ],
+        if (account['payment_instructions']?.toString().isNotEmpty ?? false) ...[
+          const SizedBox(height: 8),
+          Text(account['payment_instructions'].toString()),
+        ],
+        const SizedBox(height: 8),
+        const Text('These are the payment details configured for your apartment. After paying, submit your transaction code below. Your rent is updated after verification.', style: TextStyle(color: Colors.black54, fontSize: 12, height: 1.4)),
+      ]),
+    ));
+  }
+
   Widget _instruction(String label, String value) => Padding(
     padding: const EdgeInsets.symmetric(vertical: 5),
     child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -219,6 +276,8 @@ class _TenantRentCollectionPageState extends State<TenantRentCollectionPage> {
       body: RefreshIndicator(
         onRefresh: _loadHistory,
         child: ListView(padding: const EdgeInsets.all(16), children: [
+          _buildCollectionAccountCard(),
+          const SizedBox(height: 12),
           Card(child: Padding(padding: const EdgeInsets.all(18), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             const Text('Pay rent directly to your landlord', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
             const SizedBox(height: 6),
