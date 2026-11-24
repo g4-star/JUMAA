@@ -216,7 +216,10 @@ class _TenantRentCollectionPageState extends State<TenantRentCollectionPage> {
                   leading: Icon(status == 'verified' ? Icons.check_circle : Icons.schedule, color: status == 'verified' ? Colors.green : Colors.orange),
                   title: Text('KSh ${amount.toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.bold)),
                   subtitle: Text('${(p['payment_method'] ?? '').toString().toUpperCase()} • ${p['payment_reference'] ?? ''}'),
-                  trailing: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.end, children: [\n                    Text(status.toUpperCase(), style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),\n                    if (status == 'pending') TextButton(onPressed: () => _submitReference(p['id'].toString()), child: const Text('Submit code')),\n                  ]),
+                  trailing: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.end, children: [
+                    Text(status.toUpperCase(), style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+                    if (status == 'pending') TextButton(onPressed: () => _submitReference(p['id'].toString()), child: const Text('Submit code')),
+                  ]),
                 ),
               );
             }),
