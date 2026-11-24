@@ -29,6 +29,10 @@ Deno.serve(async (req) => {
   }
 
   try {
+    if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+      throw new Error('Supabase service credentials are not configured.');
+    }
+
     if (req.method !== 'POST') {
       return new Response(JSON.stringify({ success: false, error: 'Method not allowed.' }), {
         status: 405, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -54,10 +58,6 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ success: false, error: 'Authentication required.' }), {
         status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
-    }
-
-    if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-      throw new Error('Supabase service credentials are not configured.');
     }
 
     if (!BREVO_API_KEY) {
