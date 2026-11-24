@@ -53,6 +53,10 @@ Deno.serve(async (req) => {
     if (bankAccountNumber && !/^[A-Za-z0-9-]{5,64}$/.test(bankAccountNumber)) {
       return json({ error: "Enter a valid bank account number." }, 400);
     }
+    if ((bankAccountNumber || bankName || bankAccountName) &&
+        (!bankAccountNumber || !bankName || !bankAccountName)) {
+      return json({ error: "Bank name, account holder and account number must all be provided together." }, 400);
+    }
     if (isActive && !mpesaPaybill && !mpesaTill && !bankAccountNumber) {
       return json({ error: "Add at least one M-Pesa or bank destination before activating collection." }, 400);
     }
