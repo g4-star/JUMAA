@@ -85,7 +85,7 @@ class _LandlordPaymentsPageState extends State<LandlordPaymentsPage> {
       final response = await _client.functions.invoke(
         'rent-collection-account-configure',
         body: {
-          'property_id': widget.landlord.propertyId,
+          'property_id': _propertyId,
           'mpesa_paybill': _paybill.text.trim(),
           'mpesa_till': _till.text.trim(),
           'mpesa_account_reference': _mpesaReference.text.trim(),
@@ -119,11 +119,11 @@ class _LandlordPaymentsPageState extends State<LandlordPaymentsPage> {
     try {
       final rows = await _client.from('rent_payment_records')
           .select('id,tenant_id,property_id,unit_id,amount,payment_method,status,payment_reference,provider_reference,receipt_number,rejection_reason,unallocated_amount,submitted_at,created_at,verified_at')
-          .eq('property_id', widget.landlord.propertyId)
+          .eq('property_id', _propertyId)
           .order('created_at', ascending: false);
       final chargeRows = await _client.from('rent_charge_records')
           .select('id,tenant_id,period_start,due_date,amount_due,amount_paid,status')
-          .eq('property_id', widget.landlord.propertyId)
+          .eq('property_id', _propertyId)
           .order('due_date', ascending: true);
       if (!mounted) return;
       setState(() {
@@ -162,7 +162,7 @@ class _LandlordPaymentsPageState extends State<LandlordPaymentsPage> {
     if (values == null) return;
     try {
       final response = await _client.functions.invoke('rent-charge-generate', body: {
-        'property_id': widget.landlord.propertyId,
+        'property_id': _propertyId,
         'period': values[0],
         'due_date': values[1],
       });
