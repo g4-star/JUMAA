@@ -15677,11 +15677,11 @@ class _RegisterApartmentPageState extends State<RegisterApartmentPage> {
           ),
           enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(16),
-            borderSide: const BorderSide(color: Colors.white12),
+            borderSide: const BorderSide(color: Color(0xFFDCE5DF)),
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(16),
-            borderSide: const BorderSide(color: Color(0xFF39B982), width: 1.5),
+            borderSide: const BorderSide(color: Color(0xFF0B3D2E), width: 1.5),
           ),
         ),
       ),
