@@ -114,9 +114,11 @@ class _LandlordPaymentsPageState extends State<LandlordPaymentsPage> {
         );
       }
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not save collection account: $e')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not save collection account: $e')),
+        );
+      }
     } finally {
       if (mounted) setState(() => _savingAccount = false);
     }
@@ -178,9 +180,11 @@ class _LandlordPaymentsPageState extends State<LandlordPaymentsPage> {
         throw Exception(response.data['error'] ?? 'Could not generate rent charges.');
       }
       await _loadPayments();
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(response.data['message']?.toString() ?? 'Rent charges generated.')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(response.data['message']?.toString() ?? 'Rent charges generated.')),
+        );
+      }
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not generate charges: $e')));
     }
@@ -211,9 +215,11 @@ class _LandlordPaymentsPageState extends State<LandlordPaymentsPage> {
         throw Exception(response.data['error'] ?? 'Verification failed.');
       }
       await _loadPayments();
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Verified. Receipt ${response.data['payment']?['receipt_number'] ?? ''}')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Verified. Receipt ${response.data['payment']?['receipt_number'] ?? ''}')),
+        );
+      }
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Verification failed: $e')));
     }
@@ -287,7 +293,12 @@ class _LandlordPaymentsPageState extends State<LandlordPaymentsPage> {
       return sum + (due - paid).clamp(0, double.infinity).toDouble();
     });
     final today = DateTime.now().toIso8601String().substring(0, 10);
-    final overdueCount = _charges.where((charge) => charge['status'] != 'paid' && (charge['due_date']?.toString() ?? '9999') < today).length;
+    final overdueCount = _charges.where((charge) {
+      final dueDate = DateTime.tryParse(charge['due_date']?.toString() ?? '');
+      return charge['status'] != 'paid' &&
+          dueDate != null &&
+          dueDate.isBefore(DateTime.now());
+    }).length;
     return Scaffold(
       appBar: AppBar(title: const Text('Rent collection', style: TextStyle(fontWeight: FontWeight.bold)), actions: [
         IconButton(onPressed: _loadPayments, icon: const Icon(Icons.refresh)),
@@ -305,7 +316,7 @@ class _LandlordPaymentsPageState extends State<LandlordPaymentsPage> {
               childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
               children: [
                 DropdownButtonFormField<String>(
-                  value: _destinationType,
+                  initialValue: _destinationType,
                   decoration: const InputDecoration(labelText: 'Payment destination type', border: OutlineInputBorder()),
                   items: const [
                     DropdownMenuItem(value: 'paybill', child: Text('M-Pesa Paybill')),
