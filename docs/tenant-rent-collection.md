@@ -6,9 +6,10 @@ Rent collection uses its own `rent_payment_records` ledger and is intentionally 
 ## Current implementation
 - Property-level collection instructions support landlord-owned M-Pesa Paybill/Till and bank accounts.
 - Tenant payment intent is authenticated against the Supabase session and resolved from `tenants.auth_user_id`; client-supplied tenant/property/unit IDs are ignored.
-- Payment intent creates a unique `JMR-` reference and returns the selected property's instructions.
+- Payment intent creates a unique `JMR-` reference and returns the selected property's instructions. Existing property M-Pesa Paybill/Till settings are copied into the collection-account table by the migration when present.
+- Tenants can submit the M-Pesa receipt or bank transaction reference; assigned landlords/property owners can reconcile it after checking the actual account statement.
 - Tenant RLS permits reading only their own rent payment history and their assigned property's active collection instructions.
-- Creating an intent never marks rent as paid. Records remain `pending` until a verified provider callback or an authorized reconciliation process confirms settlement.
+- Creating an intent never marks rent as paid. Records remain `pending` or `submitted` until an authorized landlord/property owner reconciliation confirms settlement.
 - No credentials, passkeys, bank API keys, or service-role secrets belong in Flutter.
 
 ## Provider / settlement requirements before live payments
@@ -22,7 +23,8 @@ Bank transfer instructions are property-specific. Automated bank confirmation re
 - Apply the migration.
 - Deploy `rent-payment-intent` with JWT verification enabled.
 - Configure one or more active `rent_collection_accounts` rows per property with verified landlord-owned destinations.
-- Implement and test signed M-Pesa callback verification and bank reconciliation before enabling automatic rent crediting.
+- Add the property-owner UI for configuring bank details and M-Pesa destination details.
+- Implement and test signed M-Pesa callback verification and bank API/statement reconciliation before enabling automatic rent crediting or STK Push.
 - Do not mark a payment `verified` based only on a tenant-submitted receipt or transaction code.
 
 ## Safety rules
