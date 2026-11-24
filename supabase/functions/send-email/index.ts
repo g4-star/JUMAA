@@ -1,6 +1,8 @@
 import { corsHeaders } from '../_shared/cors.ts';
 
 const BREVO_API_KEY = Deno.env.get('BREVO_API_KEY');
+const SUPABASE_URL = Deno.env.get('SUPABASE_URL');
+const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY');
 const EMAIL_FROM = Deno.env.get('EMAIL_FROM') ?? 'JUMAA <your-verified-email@example.com>';
 
 interface EmailRequest {
@@ -17,16 +19,72 @@ Deno.serve(async (req) => {
   }
 
   try {
+    if (req.method !== 'POST') {
+      return new Response(JSON.stringify({ error: 'Method not allowed.' }), {
+        status: 405,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+      throw new Error('Supabase authentication is not configured.');
+    }
+
+    const authorization = req.headers.get('Authorization') ?? '';
+    if (!authorization.startsWith('Bearer ')) {
+      return new Response(JSON.stringify({ error: 'Authentication required.' }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const authResponse = await fetch(SUPABASE_URL + '/auth/v1/user', {
+      headers: { apikey: SUPABASE_ANON_KEY, Authorization: authorization },
+    });
+    if (!authResponse.ok) {
+      return new Response(JSON.stringify({ error: 'Authentication required.' }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+    const caller = await authResponse.json();
+
+    const profileResponse = await fetch(
+      SUPABASE_URL + '/rest/v1/profiles?id=eq.' + encodeURIComponent(caller.id) + '&select=role',
+      { headers: { apikey: SUPABASE_ANON_KEY, Authorization: authorization } },
+    );
+    if (!profileResponse.ok) {
+      throw new Error('Could not verify email permissions.');
+    }
+    const profiles = await profileResponse.json();
+    const role = Array.isArray(profiles) ? profiles[0]?.role?.toString().toLowerCase() : null;
+    if (!['owner', 'landlord', 'jumaa_owner'].includes(role ?? '')) {
+      return new Response(JSON.stringify({ error: 'You are not allowed to send platform emails.' }), {
+        status: 403,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
     if (!BREVO_API_KEY) {
       throw new Error('BREVO_API_KEY is not configured.');
     }
 
-    const body: EmailRequest = await req.json();
+    const body = await req.json() as Partial<EmailRequest>;
+    const recipient = typeof body.to === 'string' ? body.to.trim() : '';
+    const subject = typeof body.subject === 'string' ? body.subject.trim() : '';
+    const html = typeof body.html === 'string' ? body.html : '';
 
-    if (!body.to || !body.subject || !body.html) {
+    if (
+      !recipient ||
+      !subject ||
+      !html ||
+      subject.length > 200 ||
+      html.length > 50000 ||
+      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipient)
+    ) {
       return new Response(
         JSON.stringify({
-          error: 'to, subject and html are required',
+          error: 'A valid recipient, subject (max 200 characters) and email body (max 50 KB) are required.',
         }),
         {
           status: 400,
@@ -52,11 +110,11 @@ Deno.serve(async (req) => {
         },
         to: [
           {
-            email: body.to,
+            email: recipient,
           },
         ],
-        subject: body.subject,
-        htmlContent: body.html,
+        subject,
+        htmlContent: html,
       }),
     });
 

@@ -23,6 +23,14 @@ function escapeHtml(value: string): string {
     .replaceAll("'", '&#39;');
 }
 
+function normalizeKenyanMobilePhone(value: string): string | null {
+  const digits = value.replace(/\D/g, '');
+  if (/^254[17]\d{8}$/.test(digits)) return digits;
+  if (/^0[17]\d{8}$/.test(digits)) return '254' + digits.slice(1);
+  if (/^[17]\d{8}$/.test(digits)) return '254' + digits;
+  return null;
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -31,6 +39,33 @@ Deno.serve(async (req) => {
   try {
     if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
       throw new Error('Supabase service credentials are not configured.');
+    }
+
+    if (req.method !== 'POST') {
+      return new Response(JSON.stringify({ success: false, error: 'Method not allowed.' }), {
+        status: 405, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const authorization = req.headers.get('Authorization') ?? '';
+    if (!authorization.startsWith('Bearer ')) {
+      return new Response(JSON.stringify({ success: false, error: 'Authentication required.' }), {
+        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+    const callerResponse = await fetch(SUPABASE_URL + '/auth/v1/user', {
+      headers: { apikey: SUPABASE_SERVICE_ROLE_KEY, Authorization: authorization },
+    });
+    if (!callerResponse.ok) {
+      return new Response(JSON.stringify({ success: false, error: 'Authentication required.' }), {
+        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+    const caller = await callerResponse.json();
+    if (typeof caller?.id !== 'string' || !caller.id) {
+      return new Response(JSON.stringify({ success: false, error: 'Authentication required.' }), {
+        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
     if (!BREVO_API_KEY) {
@@ -63,6 +98,39 @@ Deno.serve(async (req) => {
     }
 
     const email = body.email.trim().toLowerCase();
+    const phone = normalizeKenyanMobilePhone(body.phone);
+    if (!phone) {
+      return new Response(JSON.stringify({
+        success: false,
+        error: 'Enter a valid Kenyan mobile number, e.g. 0712345678 or +254712345678.',
+      }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // Only the registered property owner may create and assign its landlord.
+    const callerProfileResponse = await fetch(
+      SUPABASE_URL + '/rest/v1/profiles?id=eq.' + encodeURIComponent(caller.id) + '&select=id,role',
+      { headers: { apikey: SUPABASE_SERVICE_ROLE_KEY, Authorization: 'Bearer ' + SUPABASE_SERVICE_ROLE_KEY } },
+    );
+    if (!callerProfileResponse.ok) throw new Error('Could not verify account permissions.');
+    const callerProfiles = await callerProfileResponse.json();
+    const callerRole = Array.isArray(callerProfiles) ? callerProfiles[0]?.role?.toString().toLowerCase() : null;
+
+    const propertyAccessResponse = await fetch(
+      SUPABASE_URL + '/rest/v1/properties?id=eq.' + encodeURIComponent(body.property_id) + '&select=id,owner_id,name',
+      { headers: { apikey: SUPABASE_SERVICE_ROLE_KEY, Authorization: 'Bearer ' + SUPABASE_SERVICE_ROLE_KEY } },
+    );
+    if (!propertyAccessResponse.ok) throw new Error('Could not verify property ownership.');
+    const accessibleProperties = await propertyAccessResponse.json();
+    const ownedProperty = Array.isArray(accessibleProperties) ? accessibleProperties[0] : null;
+    if (callerRole !== 'owner' || ownedProperty?.owner_id !== caller.id) {
+      return new Response(JSON.stringify({ success: false, error: 'Only the owner of this property can assign its landlord.' }), {
+        status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
 
     // ----------------------------------------------------------
     // 1. Check whether this email already has a profile.
@@ -124,7 +192,7 @@ Deno.serve(async (req) => {
           email_confirm: true,
           user_metadata: {
             full_name: body.full_name,
-            phone: body.phone,
+            phone,
             role: 'landlord',
             property_id: body.property_id,
             property_name: body.property_name,
@@ -170,7 +238,7 @@ Deno.serve(async (req) => {
           id: authUserId,
           email,
           full_name: body.full_name,
-          phone: body.phone,
+          phone,
           role: 'landlord',
           must_reset_password: true,
           mfa_required: false,
@@ -220,7 +288,7 @@ Deno.serve(async (req) => {
           id: authUserId,
           full_name: body.full_name,
           email,
-          phone: body.phone,
+          phone,
         }),
       },
     );

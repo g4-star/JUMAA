@@ -1,5 +1,5 @@
 [functions.send-email]
-verify_jwt = false
+verify_jwt = true
 
 [functions.paystack-webhook]
 verify_jwt = false
@@ -27,3 +27,27 @@ verify_jwt = true
 
 [functions.phone-login]
 verify_jwt = false
+
+[functions.rent-payment-intent]
+verify_jwt = true
+
+[functions.rent-payment-reconcile]
+verify_jwt = true
+
+[functions.rent-payment-submit-reference]
+verify_jwt = true
+
+[functions.rent-collection-account-configure]
+verify_jwt = true
+
+[functions.rent-payment-reject]
+verify_jwt = true
+
+[functions.rent-charge-generate]
+verify_jwt = true
+
+[functions.create-tenant-account]
+verify_jwt = true
+
+[functions.create-landlord-account]
+verify_jwt = true

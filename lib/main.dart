@@ -31,7 +31,9 @@ import 'models/landlord.dart';
 import 'models/tenant.dart';
 import 'screens/admin/admin_dashboard.dart';
 import 'screens/landlord/landlord_dashboard.dart';
+import 'screens/tenant/tenant_rent_collection_page.dart';
 import 'screens/jumaa_owner/jumaa_owner_dashboard.dart';
+import 'screens/jumaa_owner/owner_rent_collection_page.dart';
 import 'services/booking_service.dart';
 import 'services/notification_service.dart';
 import 'services/jumaa_permission_service.dart';
@@ -66,7 +68,11 @@ Future<void> _signInWithEmailOrPhone(String identifier, String password) async {
   await supabase.auth.setSession(data['refresh_token'].toString());
 }
 
-// JUMAA EMAIL SERVICE
+bool _isValidKenyanMobileNumber(String value) {
+  final digits = value.replaceAll(RegExp(r'\D'), '');
+  return RegExp(r'^(?:254[17]\d{8}|0[17]\d{8}|[17]\d{8})$').hasMatch(digits);
+}
+
 // ============================================================
 
 class JumaaEmailService {
@@ -220,7 +226,13 @@ Future<void> _initializeFirebaseMessaging() async {
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  // Push notifications are optional; a Firebase configuration problem must
+  // never prevent customers from opening JUMAA or accessing their accounts.
+  try {
+    await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  } catch (e) {
+    debugPrint('Firebase initialization failed; push notifications unavailable: $e');
+  }
 
   await Supabase.initialize(
     url: 'https://pdezijwjfqyulkkuhoun.supabase.co',
@@ -335,6 +347,9 @@ class _ApartmentAppState extends State<ApartmentApp> {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'JUMAA',
+      routes: {
+        '/welcome': (_) => const JUMAAWelcomePage(),
+      },
       themeMode: _themeMode,
       theme: ThemeData(
         useMaterial3: true,
@@ -568,38 +583,30 @@ class _OpenNestAuthGateState extends State<OpenNestAuthGate> {
       // ----------------------------------------------------------
       // DETERMINE ACCOUNT ROLE
       // ----------------------------------------------------------
-      String? role = user.userMetadata?['role']
-          ?.toString()
-          .toLowerCase()
-          .trim();
+      // The database profile is the authority for role and account status.
+      // Auth user metadata is user-editable and must never grant a role.
+      final profile = await OpenNestStore.supabase
+          .from('profiles')
+          .select('role,account_status,suspension_reason')
+          .eq('id', user.id)
+          .maybeSingle();
 
-      String accountStatus = 'active';
-      String suspensionReason = '';
-
-      try {
-        final profile = await OpenNestStore.supabase
-            .from('profiles')
-            .select('role,account_status,suspension_reason')
-            .eq('id', user.id)
-            .maybeSingle();
-
-        if (profile != null) {
-          final profileRole = profile['role']?.toString().toLowerCase().trim();
-
-          if (profileRole != null && profileRole.isNotEmpty) {
-            role = profileRole;
-          }
-
-          accountStatus =
-              profile['account_status']?.toString().toLowerCase().trim() ??
-              'active';
-
-          suspensionReason =
-              profile['suspension_reason']?.toString().trim() ?? '';
+      final role = profile?['role']?.toString().toLowerCase().trim();
+      if (role == null || role.isEmpty) {
+        await OpenNestStore.supabase.auth.signOut();
+        if (mounted) {
+          setState(() {
+            _loggedIn = false;
+            _loading = false;
+          });
         }
-      } catch (e) {
-        // Profile loading failure is handled by the default account state.
+        return;
       }
+
+      final accountStatus =
+          profile?['account_status']?.toString().toLowerCase().trim() ?? 'active';
+      final suspensionReason =
+          profile?['suspension_reason']?.toString().trim() ?? '';
 
       // ----------------------------------------------------------
       // BLOCK SUSPENDED ACCOUNTS WITH EXISTING SESSIONS.
@@ -699,7 +706,7 @@ class _OpenNestAuthGateState extends State<OpenNestAuthGate> {
       // ----------------------------------------------------------
       // VALIDATE PROPERTY OWNER SESSION
       // ----------------------------------------------------------
-      if (role == 'owner' || role == null || role.isEmpty) {
+      if (role == 'owner') {
         await OpenNestStore.loadOwners();
 
         if (mounted) {
@@ -734,6 +741,8 @@ class _OpenNestAuthGateState extends State<OpenNestAuthGate> {
         });
       }
     } catch (e) {
+      debugPrint('AUTH RESTORE: could not validate the saved session: $e');
+      await OpenNestStore.supabase.auth.signOut();
       if (mounted) {
         setState(() {
           _loggedIn = false;
@@ -988,63 +997,79 @@ class _DashboardPageState extends State<DashboardPage> {
       );
     }
 
-    return Scaffold(
+    return PopScope<Object?>(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        if (currentIndex != 0) {
+          _selectPage(0);
+        } else {
+          ScaffoldMessenger.of(context)
+            ..hideCurrentSnackBar()
+            ..showSnackBar(
+              const SnackBar(content: Text('You are already on your JUMAA home dashboard.')),
+            );
+        }
+      },
+      child: Scaffold(
       body: IndexedStack(index: currentIndex, children: pages),
       bottomNavigationBar: NavigationBarTheme(
         data: const NavigationBarThemeData(
-          height: 42,
+          height: 64,
           labelTextStyle: WidgetStatePropertyAll(
-            TextStyle(fontSize: 6, height: 0.8),
+            TextStyle(fontSize: 10, height: 1.0),
           ),
-          iconTheme: WidgetStatePropertyAll(IconThemeData(size: 11)),
+          iconTheme: WidgetStatePropertyAll(IconThemeData(size: 20)),
         ),
         child: NavigationBar(
-          height: 42,
+          height: 64,
+          labelBehavior: NavigationDestinationLabelBehavior.onlyShowSelected,
           selectedIndex: currentIndex,
           onDestinationSelected: _selectPage,
           destinations: const [
             NavigationDestination(
-              icon: Icon(Icons.dashboard_outlined, size: 11),
-              selectedIcon: Icon(Icons.dashboard, size: 11),
+              icon: Icon(Icons.dashboard_outlined, size: 20),
+              selectedIcon: Icon(Icons.dashboard, size: 20),
               label: 'Dashboard',
             ),
             NavigationDestination(
-              icon: Icon(Icons.apartment_outlined, size: 11),
-              selectedIcon: Icon(Icons.apartment, size: 11),
+              icon: Icon(Icons.apartment_outlined, size: 20),
+              selectedIcon: Icon(Icons.apartment, size: 20),
               label: 'Apartments',
             ),
             NavigationDestination(
-              icon: Icon(Icons.badge_outlined, size: 11),
-              selectedIcon: Icon(Icons.badge, size: 11),
+              icon: Icon(Icons.badge_outlined, size: 20),
+              selectedIcon: Icon(Icons.badge, size: 20),
               label: 'Landlords',
             ),
             NavigationDestination(
-              icon: Icon(Icons.people_outline, size: 11),
-              selectedIcon: Icon(Icons.people, size: 11),
+              icon: Icon(Icons.people_outline, size: 20),
+              selectedIcon: Icon(Icons.people, size: 20),
               label: 'Tenants',
             ),
             NavigationDestination(
-              icon: Icon(Icons.chat_bubble_outline, size: 11),
-              selectedIcon: Icon(Icons.chat_bubble, size: 11),
+              icon: Icon(Icons.chat_bubble_outline, size: 20),
+              selectedIcon: Icon(Icons.chat_bubble, size: 20),
               label: 'Messages',
             ),
             NavigationDestination(
-              icon: Icon(Icons.payments_outlined, size: 11),
-              selectedIcon: Icon(Icons.payments, size: 11),
+              icon: Icon(Icons.payments_outlined, size: 20),
+              selectedIcon: Icon(Icons.payments, size: 20),
               label: 'Payments',
             ),
             NavigationDestination(
-              icon: Icon(Icons.workspace_premium_outlined, size: 11),
-              selectedIcon: Icon(Icons.workspace_premium, size: 11),
+              icon: Icon(Icons.workspace_premium_outlined, size: 20),
+              selectedIcon: Icon(Icons.workspace_premium, size: 20),
               label: 'Subscriptions',
             ),
             NavigationDestination(
-              icon: Icon(Icons.settings_outlined, size: 11),
-              selectedIcon: Icon(Icons.settings, size: 11),
+              icon: Icon(Icons.settings_outlined, size: 20),
+              selectedIcon: Icon(Icons.settings, size: 20),
               label: 'Settings',
             ),
           ],
         ),
+      ),
       ),
     );
   }
@@ -1114,17 +1139,17 @@ class _SubscriptionsPlaceholderPageState
           break;
         }
       }
-      property ??= properties.first;
+      final selectedProperty = property ?? properties.first;
 
       var response = await OpenNestStore.supabase
           .from('subscriptions')
           .select()
           .eq('owner_id', user.id)
-          .eq('property_id', property.id)
+          .eq('property_id', selectedProperty.id)
           .maybeSingle();
 
       if (response == null) {
-        throw Exception('No subscription exists for ${property.name}.');
+        throw Exception('No subscription exists for ${selectedProperty.name}.');
       }
 
       // Apply complete months already funded by verified property credit
@@ -1137,7 +1162,7 @@ class _SubscriptionsPlaceholderPageState
           .from('subscriptions')
           .select()
           .eq('owner_id', user.id)
-          .eq('property_id', property.id)
+          .eq('property_id', selectedProperty.id)
           .maybeSingle();
 
       if (response == null) {
@@ -1148,7 +1173,7 @@ class _SubscriptionsPlaceholderPageState
           .from('subscription_payments')
           .select()
           .eq('owner_id', user.id)
-          .eq('property_id', property.id)
+          .eq('property_id', selectedProperty.id)
           .order('created_at', ascending: false)
           .limit(20);
 
@@ -5158,8 +5183,9 @@ class _PublicPropertyDetailsPageState extends State<PublicPropertyDetailsPage> {
                     child: FilledButton.icon(
                       onPressed: () async {
                         final mapsUrl = Uri.parse(
-                          'https://www.google.com/maps/search/?api=1'
-                          '&query=${Uri.encodeComponent(areaLabel)}',
+                          'https://www.google.com/maps/dir/?api=1'
+                          '&destination=${Uri.encodeComponent(areaLabel)}'
+                          '&travelmode=driving',
                         );
 
                         final launched = await launchUrl(
@@ -7343,6 +7369,14 @@ class _OwnerPaymentsPageState extends State<OwnerPaymentsPage> {
         ),
         actions: [
           IconButton(
+            tooltip: 'Rent accounting',
+            icon: const Icon(Icons.home_work_outlined),
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const OwnerRentCollectionPage()),
+            ),
+          ),
+          IconButton(
             tooltip: 'Refresh',
             icon: const Icon(Icons.refresh),
             onPressed: _loadPayments,
@@ -9050,7 +9084,7 @@ class _TenantDashboardPageState extends State<TenantDashboardPage> {
     ),
     const TenantAnnouncementsPage(),
     TenantNotificationsPage(tenantProfile: widget.tenantProfile),
-    PaymentsPage(tenantProfile: widget.tenantProfile),
+    TenantRentCollectionPage(tenantProfile: widget.tenantProfile),
     SettingsPage(
       isDarkMode: Theme.of(context).brightness == Brightness.dark,
       onDarkModeChanged: (enabled) {
@@ -9619,7 +9653,7 @@ class _TenantDashboardPageState extends State<TenantDashboardPage> {
       ),
       const TenantAnnouncementsPage(),
       TenantNotificationsPage(tenantProfile: widget.tenantProfile),
-      PaymentsPage(tenantProfile: widget.tenantProfile),
+      TenantRentCollectionPage(tenantProfile: widget.tenantProfile),
       SettingsPage(
         isDarkMode: Theme.of(context).brightness == Brightness.dark,
         onDarkModeChanged: (enabled) {
@@ -9632,7 +9666,21 @@ class _TenantDashboardPageState extends State<TenantDashboardPage> {
       ),
     ];
 
-    return Scaffold(
+    return PopScope<Object?>(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        if (currentIndex != 0) {
+          setState(() => currentIndex = 0);
+        } else {
+          ScaffoldMessenger.of(context)
+            ..hideCurrentSnackBar()
+            ..showSnackBar(
+              const SnackBar(content: Text('You are already on your home dashboard.')),
+            );
+        }
+      },
+      child: Scaffold(
       body: IndexedStack(index: currentIndex, children: pages),
       bottomNavigationBar: NavigationBarTheme(
         data: const NavigationBarThemeData(
@@ -9678,6 +9726,7 @@ class _TenantDashboardPageState extends State<TenantDashboardPage> {
             ),
           ],
         ),
+      ),
       ),
     );
   }
@@ -11214,6 +11263,7 @@ class _LandlordLoginPageState extends State<LandlordLoginPage> {
         ),
       );
     } on AuthException catch (e) {
+      await OpenNestStore.supabase.auth.signOut();
       if (!mounted) return;
 
       setState(() {
@@ -11229,6 +11279,7 @@ class _LandlordLoginPageState extends State<LandlordLoginPage> {
         ),
       );
     } catch (e) {
+      await OpenNestStore.supabase.auth.signOut();
       if (!mounted) return;
 
       setState(() {
@@ -14488,6 +14539,9 @@ class _RegisterApartmentPageState extends State<RegisterApartmentPage> {
   String? _selectedCounty;
   String? _selectedSubcounty;
   String? _selectedArea;
+  double? _latitude;
+  double? _longitude;
+  bool _isGettingLocation = false;
 
   static const Map<String, Map<String, List<String>>> _kenyaLocations = {
     'Baringo': {
@@ -14914,6 +14968,67 @@ class _RegisterApartmentPageState extends State<RegisterApartmentPage> {
     return _kenyaLocations[_selectedCounty!]![_selectedSubcounty!] ?? [];
   }
 
+  Future<void> _capturePropertyLocation() async {
+    if (_isGettingLocation) return;
+    setState(() => _isGettingLocation = true);
+
+    try {
+      if (!await Geolocator.isLocationServiceEnabled()) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Turn on GPS/location services and try again.')),
+        );
+        return;
+      }
+
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await JumaaPermissionService.instance.requestLocation();
+      }
+
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              permission == LocationPermission.deniedForever
+                  ? 'Location permission is blocked. Enable it in app settings.'
+                  : 'Location permission is needed to save the apartment pin.',
+            ),
+            action: permission == LocationPermission.deniedForever
+                ? SnackBarAction(
+                    label: 'Settings',
+                    onPressed: () => JumaaPermissionService.instance.openSettings(),
+                  )
+                : null,
+          ),
+        );
+        return;
+      }
+
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
+      );
+
+      if (!mounted) return;
+      setState(() {
+        _latitude = position.latitude;
+        _longitude = position.longitude;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Apartment GPS location captured.')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not capture apartment location: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _isGettingLocation = false);
+    }
+  }
+
   bool _obscurePassword = true;
   bool _isCreating = false;
   bool _acceptedTerms = false;
@@ -15031,6 +15146,8 @@ class _RegisterApartmentPageState extends State<RegisterApartmentPage> {
             'subcounty': _selectedSubcounty!,
             'location': location,
             'address': address,
+            'latitude': _latitude,
+            'longitude': _longitude,
             'description': '',
             'payment_method': 'till',
             'mpesa_till_number': '',
@@ -15304,6 +15421,9 @@ class _RegisterApartmentPageState extends State<RegisterApartmentPage> {
               validator: (value) {
                 if (value == null || value.trim().isEmpty) {
                   return 'Enter your phone number';
+                }
+                if (!_isValidKenyanMobileNumber(value)) {
+                  return 'Enter a valid Kenyan mobile number, e.g. 0712345678 or +254712345678.';
                 }
                 return null;
               },
@@ -15616,6 +15736,33 @@ class _RegisterApartmentPageState extends State<RegisterApartmentPage> {
                 return null;
               },
             ),
+
+            const SizedBox(height: 12),
+            OutlinedButton.icon(
+              onPressed: _isGettingLocation ? null : _capturePropertyLocation,
+              icon: _isGettingLocation
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.my_location_rounded),
+              label: Text(
+                _isGettingLocation
+                    ? 'Capturing apartment GPS...'
+                    : _latitude == null
+                        ? 'Pin apartment location with GPS'
+                        : 'Apartment GPS captured • Update pin',
+              ),
+            ),
+            if (_latitude != null && _longitude != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text(
+                  'Map pin: ${_latitude!.toStringAsFixed(6)}, ${_longitude!.toStringAsFixed(6)}',
+                  style: const TextStyle(fontSize: 12, color: Color(0xFF0B3D2E)),
+                ),
+              ),
 
             const SizedBox(height: 18),
 
@@ -16191,10 +16338,15 @@ class _PublicPropertyRoutePageState extends State<PublicPropertyRoutePage> {
     // ----------------------------------------------------------
     // EXACT PROPERTY GPS AVAILABLE
     // ----------------------------------------------------------
-    if (position != null && latitude != null && longitude != null) {
+    if (latitude != null && longitude != null) {
+      // If JUMAA location permission is unavailable, let Google Maps use
+      // the device's own current location as the route origin.
+      final origin = position == null
+          ? ''
+          : '&origin=${position.latitude},${position.longitude}';
       final mapsUrl = Uri.parse(
         'https://www.google.com/maps/dir/?api=1'
-        '&origin=${position.latitude},${position.longitude}'
+        '$origin'
         '&destination=$latitude,$longitude'
         '&travelmode=driving',
       );
@@ -16270,8 +16422,9 @@ class _PublicPropertyRoutePageState extends State<PublicPropertyRoutePage> {
     } else {
       // No user GPS available — search for the property area.
       mapsUrl = Uri.parse(
-        'https://www.google.com/maps/search/?api=1'
-        '&query=$destination',
+        'https://www.google.com/maps/dir/?api=1'
+        '&destination=$destination'
+        '&travelmode=driving',
       );
     }
 
@@ -16458,10 +16611,12 @@ class _PublicPropertyRoutePageState extends State<PublicPropertyRoutePage> {
                                   ),
                                 ),
                                 const SizedBox(width: 14),
-                                const Expanded(
+                                Expanded(
                                   child: Text(
-                                    'Property Area',
-                                    style: TextStyle(
+                                    property.latitude != null && property.longitude != null
+                                        ? 'Apartment GPS pin'
+                                        : 'Property Area',
+                                    style: const TextStyle(
                                       fontSize: 19,
                                       fontWeight: FontWeight.w900,
                                     ),
@@ -16507,10 +16662,11 @@ class _PublicPropertyRoutePageState extends State<PublicPropertyRoutePage> {
                                 color: Colors.orange.withValues(alpha: 0.08),
                                 borderRadius: BorderRadius.circular(14),
                               ),
-                              child: const Text(
-                                'This is the general area provided for this property. '
-                                'An exact GPS location has not been provided by the property owner.',
-                                style: TextStyle(fontSize: 14, height: 1.5),
+                              child: Text(
+                                property.latitude != null && property.longitude != null
+                                    ? 'The apartment has an exact GPS pin. JUMAA could not read your current location; Google Maps can use your device location to create directions.'
+                                    : 'The property has no exact GPS pin. Google Maps will route to the supplied address or general area.',
+                                style: const TextStyle(fontSize: 14, height: 1.5),
                               ),
                             ),
 
@@ -16519,9 +16675,13 @@ class _PublicPropertyRoutePageState extends State<PublicPropertyRoutePage> {
                             SizedBox(
                               width: double.infinity,
                               child: FilledButton.icon(
-                                onPressed: _openPropertyAreaInMaps,
-                                icon: const Icon(Icons.map_rounded),
-                                label: const Text('OPEN AREA IN MAPS'),
+                                onPressed: _openGoogleMaps,
+                                icon: const Icon(Icons.directions_rounded),
+                                label: Text(
+                                  property.latitude != null && property.longitude != null
+                                      ? 'GET DIRECTIONS IN MAPS'
+                                      : 'ROUTE TO PROPERTY AREA',
+                                ),
                               ),
                             ),
 
@@ -18166,7 +18326,8 @@ class _JUMAALoginPageState extends State<JUMAALoginPage> {
 
   Future<void> _login() async {
     final identifier = _emailController.text.trim();
-    final password = _passwordController.text.trim();
+    // Passwords are not trimmed: leading/trailing spaces may be intentional.
+    final password = _passwordController.text;
 
     if (identifier.isEmpty || password.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -18211,49 +18372,29 @@ class _JUMAALoginPageState extends State<JUMAALoginPage> {
       // Owner accounts are created with role = owner.
       // Landlord accounts are created with role = landlord.
       // ----------------------------------------------------------
-      String? role = user.userMetadata?['role']
-          ?.toString()
-          .toLowerCase()
-          .trim();
+      // Read the server-owned profile before routing to any account area.
+      // Never trust the user-editable Auth metadata role as a fallback.
+      final profile = await OpenNestStore.supabase
+          .from('profiles')
+          .select('role,account_status,suspension_reason')
+          .eq('id', user.id)
+          .maybeSingle();
 
-      String accountStatus = 'active';
-      String suspensionReason = '';
-
-      debugPrint('JUMAA LOGIN: metadata role=$role');
-
-      // ----------------------------------------------------------
-      // Load the real profile from Supabase.
-      // This also gives us the account suspension state.
-      // ----------------------------------------------------------
-      try {
-        final profile = await OpenNestStore.supabase
-            .from('profiles')
-            .select('role,account_status,suspension_reason')
-            .eq('id', user.id)
-            .maybeSingle();
-
-        if (profile != null) {
-          final profileRole = profile['role']?.toString().toLowerCase().trim();
-
-          if (profileRole != null && profileRole.isNotEmpty) {
-            role = profileRole;
-          }
-
-          accountStatus =
-              profile['account_status']?.toString().toLowerCase().trim() ??
-              'active';
-
-          suspensionReason =
-              profile['suspension_reason']?.toString().trim() ?? '';
-        }
-
-        debugPrint(
-          'JUMAA LOGIN: profile role=$role '
-          'accountStatus=$accountStatus',
-        );
-      } catch (e) {
-        debugPrint('JUMAA LOGIN: Could not read profile: $e');
+      final role = profile?['role']?.toString().toLowerCase().trim();
+      if (role == null || role.isEmpty) {
+        await OpenNestStore.supabase.auth.signOut();
+        throw Exception('Your JUMAA account role is not configured. Contact support.');
       }
+
+      final accountStatus =
+          profile?['account_status']?.toString().toLowerCase().trim() ?? 'active';
+      final suspensionReason =
+          profile?['suspension_reason']?.toString().trim() ?? '';
+
+      debugPrint(
+        'JUMAA LOGIN: verified profile role=$role '
+        'accountStatus=$accountStatus',
+      );
 
       // ----------------------------------------------------------
       // BLOCK SUSPENDED ACCOUNTS.
@@ -18435,7 +18576,7 @@ class _JUMAALoginPageState extends State<JUMAALoginPage> {
       // ----------------------------------------------------------
       // PROPERTY OWNER LOGIN
       // ----------------------------------------------------------
-      if (role == 'owner' || role == null || role.isEmpty) {
+      if (role == 'owner') {
         debugPrint('JUMAA LOGIN: Owner account detected.');
 
         await OpenNestStore.loadOwners();
@@ -18477,6 +18618,7 @@ class _JUMAALoginPageState extends State<JUMAALoginPage> {
         'This account is not registered as a JUMAA owner or landlord account.',
       );
     } on AuthException catch (e) {
+      await OpenNestStore.supabase.auth.signOut();
       if (!mounted) return;
 
       setState(() {
@@ -18494,6 +18636,7 @@ class _JUMAALoginPageState extends State<JUMAALoginPage> {
         ),
       );
     } catch (e) {
+      await OpenNestStore.supabase.auth.signOut();
       if (!mounted) return;
 
       setState(() {

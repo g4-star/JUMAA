@@ -314,7 +314,21 @@ class _JumaaOwnerDashboardState extends State<JumaaOwnerDashboard> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return PopScope<Object?>(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        if (_currentIndex != 0) {
+          setState(() => _currentIndex = 0);
+        } else {
+          ScaffoldMessenger.of(context)
+            ..hideCurrentSnackBar()
+            ..showSnackBar(
+              const SnackBar(content: Text('You are already on your JUMAA admin home.')),
+            );
+        }
+      },
+      child: Scaffold(
       backgroundColor: const Color(0xFFF8F8FC),
       body: SafeArea(
         child: IndexedStack(
@@ -323,6 +337,7 @@ class _JumaaOwnerDashboardState extends State<JumaaOwnerDashboard> {
         ),
       ),
       bottomNavigationBar: _bottomNavigation(),
+      ),
     );
   }
 
@@ -1866,7 +1881,7 @@ class _JumaaOwnerDashboardState extends State<JumaaOwnerDashboard> {
 
     if (!mounted) return;
 
-    Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
+    Navigator.of(context).pushNamedAndRemoveUntil('/welcome', (route) => false);
   }
 
   void _showError(String message) {
