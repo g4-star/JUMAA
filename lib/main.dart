@@ -5179,8 +5179,9 @@ class _PublicPropertyDetailsPageState extends State<PublicPropertyDetailsPage> {
                     child: FilledButton.icon(
                       onPressed: () async {
                         final mapsUrl = Uri.parse(
-                          'https://www.google.com/maps/search/?api=1'
-                          '&query=${Uri.encodeComponent(areaLabel)}',
+                          'https://www.google.com/maps/dir/?api=1'
+                          '&destination=${Uri.encodeComponent(areaLabel)}'
+                          '&travelmode=driving',
                         );
 
                         final launched = await launchUrl(
