@@ -69,15 +69,18 @@ Deno.serve(async (req) => {
       throw new Error('BREVO_API_KEY is not configured.');
     }
 
-    const body: EmailRequest = await req.json();
+    const body = await req.json() as Partial<EmailRequest>;
+    const recipient = typeof body.to === 'string' ? body.to.trim() : '';
+    const subject = typeof body.subject === 'string' ? body.subject.trim() : '';
+    const html = typeof body.html === 'string' ? body.html : '';
 
     if (
-      !body.to ||
-      !body.subject ||
-      !body.html ||
-      body.subject.length > 200 ||
-      body.html.length > 50000 ||
-      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(body.to.trim())
+      !recipient ||
+      !subject ||
+      !html ||
+      subject.length > 200 ||
+      html.length > 50000 ||
+      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipient)
     ) {
       return new Response(
         JSON.stringify({
@@ -107,11 +110,11 @@ Deno.serve(async (req) => {
         },
         to: [
           {
-            email: body.to,
+            email: recipient,
           },
         ],
-        subject: body.subject,
-        htmlContent: body.html,
+        subject,
+        htmlContent: html,
       }),
     });
 
