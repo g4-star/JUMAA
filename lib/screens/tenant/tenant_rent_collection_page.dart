@@ -42,7 +42,7 @@ class _TenantRentCollectionPageState extends State<TenantRentCollectionPage> {
     try {
       final rows = await Supabase.instance.client
           .from('rent_payment_records')
-          .select('id,amount,currency,payment_method,status,payment_reference,provider_reference,receipt_number,rejection_reason,created_at,verified_at')
+          .select('id,amount,currency,payment_method,status,payment_reference,provider_reference,receipt_number,rejection_reason,unallocated_amount,created_at,verified_at')
           .order('created_at', ascending: false);
       final charges = await Supabase.instance.client
           .from('rent_charge_records')
@@ -59,6 +59,8 @@ class _TenantRentCollectionPageState extends State<TenantRentCollectionPage> {
   }
 
   double get _verifiedTotal => _history.where((p) => p['status'] == 'verified').fold<double>(0, (sum, p) => sum + (double.tryParse(p['amount']?.toString() ?? '0') ?? 0));
+
+  double get _rentCreditTotal => _history.where((p) => p['status'] == 'verified').fold<double>(0, (sum, p) => sum + (double.tryParse(p['unallocated_amount']?.toString() ?? '0') ?? 0));
 
   double get _outstandingTotal => _charges.fold<double>(0, (sum, c) {
     final due = double.tryParse(c['amount_due']?.toString() ?? '0') ?? 0;
@@ -263,6 +265,16 @@ class _TenantRentCollectionPageState extends State<TenantRentCollectionPage> {
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               const Text('Outstanding rent charges', style: TextStyle(color: Colors.black54)),
               Text('KSh ${_outstandingTotal.toStringAsFixed(2)}', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
+            ])),
+          ]))),
+          const SizedBox(height: 12),
+          Card(child: Padding(padding: const EdgeInsets.all(16), child: Row(children: [
+            const Icon(Icons.savings_outlined, color: Colors.teal, size: 28),
+            const SizedBox(width: 12),
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Text('Available rent credit', style: TextStyle(color: Colors.black54)),
+              Text('KSh ${_rentCreditTotal.toStringAsFixed(2)}', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
+              const Text('Applied automatically to future charges.', style: TextStyle(fontSize: 11, color: Colors.black54)),
             ])),
           ]))),
           const SizedBox(height: 12),
