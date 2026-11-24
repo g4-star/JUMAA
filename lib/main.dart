@@ -1135,7 +1135,7 @@ class _SubscriptionsPlaceholderPageState
         _properties = properties;
         _selectedPropertyId = property!.id;
         _property = property;
-        _subscription = Map<String, dynamic>.from(response);
+        _subscription = Map<String, dynamic>.from(response!);
         _payments = payments;
         _loading = false;
       });
@@ -1461,7 +1461,7 @@ class _SubscriptionsPlaceholderPageState
               child: Padding(
                 padding: const EdgeInsets.all(16),
                 child: DropdownButtonFormField<String>(
-                  value: _selectedPropertyId,
+                  initialValue: _selectedPropertyId,
                   decoration: const InputDecoration(
                     labelText: 'Choose property subscription',
                     border: OutlineInputBorder(),
