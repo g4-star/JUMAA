@@ -11273,11 +11273,13 @@ class _LandlordLoginPageState extends State<LandlordLoginPage> {
                   const SizedBox(height: 32),
                   TextField(
                     controller: emailController,
-                    keyboardType: TextInputType.emailAddress,
+                    keyboardType: TextInputType.text,
+                    autocorrect: false,
                     style: const TextStyle(color: Colors.black, fontSize: 16),
                     cursorColor: Colors.black,
                     decoration: InputDecoration(
-                      labelText: 'Email',
+                      labelText: 'Email or phone number',
+                      hintText: 'Enter your registered email or phone number',
                       labelStyle: const TextStyle(color: Colors.grey),
                       prefixIcon: const Icon(
                         Icons.email_outlined,
