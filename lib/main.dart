@@ -16328,10 +16328,15 @@ class _PublicPropertyRoutePageState extends State<PublicPropertyRoutePage> {
     // ----------------------------------------------------------
     // EXACT PROPERTY GPS AVAILABLE
     // ----------------------------------------------------------
-    if (position != null && latitude != null && longitude != null) {
+    if (latitude != null && longitude != null) {
+      // If JUMAA location permission is unavailable, let Google Maps use
+      // the device's own current location as the route origin.
+      final origin = position == null
+          ? ''
+          : '&origin=${position.latitude},${position.longitude}';
       final mapsUrl = Uri.parse(
         'https://www.google.com/maps/dir/?api=1'
-        '&origin=${position.latitude},${position.longitude}'
+        '$origin'
         '&destination=$latitude,$longitude'
         '&travelmode=driving',
       );
@@ -16407,8 +16412,9 @@ class _PublicPropertyRoutePageState extends State<PublicPropertyRoutePage> {
     } else {
       // No user GPS available — search for the property area.
       mapsUrl = Uri.parse(
-        'https://www.google.com/maps/search/?api=1'
-        '&query=$destination',
+        'https://www.google.com/maps/dir/?api=1'
+        '&destination=$destination'
+        '&travelmode=driving',
       );
     }
 
@@ -16597,7 +16603,9 @@ class _PublicPropertyRoutePageState extends State<PublicPropertyRoutePage> {
                                 const SizedBox(width: 14),
                                 const Expanded(
                                   child: Text(
-                                    'Property Area',
+                                    property.latitude != null && property.longitude != null
+                                        ? 'Apartment GPS pin'
+                                        : 'Property Area',
                                     style: TextStyle(
                                       fontSize: 19,
                                       fontWeight: FontWeight.w900,
@@ -16644,10 +16652,11 @@ class _PublicPropertyRoutePageState extends State<PublicPropertyRoutePage> {
                                 color: Colors.orange.withValues(alpha: 0.08),
                                 borderRadius: BorderRadius.circular(14),
                               ),
-                              child: const Text(
-                                'This is the general area provided for this property. '
-                                'An exact GPS location has not been provided by the property owner.',
-                                style: TextStyle(fontSize: 14, height: 1.5),
+                              child: Text(
+                                property.latitude != null && property.longitude != null
+                                    ? 'The apartment has an exact GPS pin. JUMAA could not read your current location; Google Maps can use your device location to create directions.'
+                                    : 'The property has no exact GPS pin. Google Maps will route to the supplied address or general area.',
+                                style: const TextStyle(fontSize: 14, height: 1.5),
                               ),
                             ),
 
@@ -16656,9 +16665,13 @@ class _PublicPropertyRoutePageState extends State<PublicPropertyRoutePage> {
                             SizedBox(
                               width: double.infinity,
                               child: FilledButton.icon(
-                                onPressed: _openPropertyAreaInMaps,
-                                icon: const Icon(Icons.map_rounded),
-                                label: const Text('OPEN AREA IN MAPS'),
+                                onPressed: _openGoogleMaps,
+                                icon: const Icon(Icons.directions_rounded),
+                                label: Text(
+                                  property.latitude != null && property.longitude != null
+                                      ? 'GET DIRECTIONS IN MAPS'
+                                      : 'ROUTE TO PROPERTY AREA',
+                                ),
                               ),
                             ),
 
