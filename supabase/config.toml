@@ -33,3 +33,6 @@ verify_jwt = true
 
 [functions.rent-payment-reconcile]
 verify_jwt = true
+
+[functions.rent-payment-submit-reference]
+verify_jwt = true
