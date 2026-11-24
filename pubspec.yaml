@@ -46,6 +46,8 @@ dependencies:
   qr_flutter: ^4.1.0
   flutter_svg: ^2.3.0
   connectivity_plus: ^7.3.1
+  pdf: ^3.11.3
+  printing: ^5.14.2
 
   material_ui: any
 dev_dependencies:

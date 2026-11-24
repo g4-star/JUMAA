@@ -2,6 +2,7 @@ import 'package:material_ui/material_ui.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'jumaa_owner_notifications_page.dart';
+import 'jumaa_owner_subscriptions_page.dart';
 
 class JumaaOwnerDashboard extends StatefulWidget {
   const JumaaOwnerDashboard({super.key});
@@ -564,6 +565,12 @@ class _JumaaOwnerDashboardState extends State<JumaaOwnerDashboard> {
         Icons.account_balance_wallet_rounded,
         _green,
         () => _showPayments(),
+      ),
+      (
+        'Subscriptions',
+        Icons.card_membership_rounded,
+        _orange,
+        () => _showSubscriptions(),
       ),
       (
         'Reports',
@@ -1399,6 +1406,16 @@ class _JumaaOwnerDashboardState extends State<JumaaOwnerDashboard> {
     } catch (e) {
       _showError('Could not load payments: $e');
     }
+  }
+
+  Future<void> _showSubscriptions() async {
+    if (!mounted) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => const JumaaOwnerSubscriptionsPage(),
+      ),
+    );
+    if (mounted) _loadDashboard();
   }
 
   void _showListSheet(

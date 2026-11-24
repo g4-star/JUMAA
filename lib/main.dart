@@ -10,6 +10,9 @@ import 'package:firebase_core/firebase_core.dart';
 import 'dart:io';
 
 import 'package:material_ui/material_ui.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
 
 import 'services/jumaa_connectivity_service.dart';
 
@@ -36,6 +39,33 @@ import 'screens/jumaa_permissions_page.dart';
 import 'firebase_options.dart';
 
 // ============================================================
+// Sign in with either the account email or its registered phone number.
+// Phone lookup and password verification happen inside the phone-login Edge Function.
+Future<void> _signInWithEmailOrPhone(String identifier, String password) async {
+  final supabase = OpenNestStore.supabase;
+  final value = identifier.trim();
+
+  if (value.contains('@')) {
+    await supabase.auth.signInWithPassword(
+      email: value.toLowerCase(),
+      password: password,
+    );
+    return;
+  }
+
+  final result = await supabase.functions.invoke(
+    'phone-login',
+    body: {'phone': value, 'password': password},
+  );
+
+  final data = result.data;
+  if (data is! Map || data['refresh_token'] is! String) {
+    throw const AuthException('Invalid phone number or password.');
+  }
+
+  await supabase.auth.setSession(data['refresh_token'].toString());
+}
+
 // JUMAA EMAIL SERVICE
 // ============================================================
 
@@ -1034,6 +1064,8 @@ class _SubscriptionsPlaceholderPageState
   bool _paying = false;
 
   Property? _property;
+  List<Property> _properties = [];
+  String? _selectedPropertyId;
   Map<String, dynamic>? _subscription;
   List<Map<String, dynamic>> _payments = [];
   String? _error;
@@ -1044,7 +1076,7 @@ class _SubscriptionsPlaceholderPageState
     _loadSubscription();
   }
 
-  Future<void> _loadSubscription() async {
+  Future<void> _loadSubscription({String? propertyId}) async {
     if (!mounted) return;
 
     setState(() {
@@ -1059,31 +1091,32 @@ class _SubscriptionsPlaceholderPageState
         throw Exception('You are not signed in.');
       }
 
-      Property? property;
+      var properties = OpenNestStore.ownerProperties
+          .where((candidate) => candidate.ownerId == user.id)
+          .toList();
 
-      for (final candidate in OpenNestStore.ownerProperties) {
-        if (candidate.ownerId == user.id) {
+      if (properties.isEmpty) {
+        await OpenNestStore.loadOwnerPropertiesFromSupabase();
+        properties = OpenNestStore.ownerProperties
+            .where((candidate) => candidate.ownerId == user.id)
+            .toList();
+      }
+
+      if (properties.isEmpty) {
+        throw Exception('No property was found for your owner account.');
+      }
+
+      final requestedPropertyId = propertyId ?? _selectedPropertyId;
+      Property? property;
+      for (final candidate in properties) {
+        if (candidate.id == requestedPropertyId) {
           property = candidate;
           break;
         }
       }
+      property ??= properties.first;
 
-      if (property == null) {
-        await OpenNestStore.loadOwnerPropertiesFromSupabase();
-
-        for (final candidate in OpenNestStore.ownerProperties) {
-          if (candidate.ownerId == user.id) {
-            property = candidate;
-            break;
-          }
-        }
-      }
-
-      if (property == null) {
-        throw Exception('No property was found for your owner account.');
-      }
-
-      final response = await OpenNestStore.supabase
+      var response = await OpenNestStore.supabase
           .from('subscriptions')
           .select()
           .eq('owner_id', user.id)
@@ -1092,6 +1125,23 @@ class _SubscriptionsPlaceholderPageState
 
       if (response == null) {
         throw Exception('No subscription exists for ${property.name}.');
+      }
+
+      // Apply complete months already funded by verified property credit
+      // before displaying the amount due or offering another checkout.
+      await OpenNestStore.supabase.rpc(
+        'apply_jumaa_subscription_credit',
+        params: {'p_subscription_id': response['id']},
+      );
+      response = await OpenNestStore.supabase
+          .from('subscriptions')
+          .select()
+          .eq('owner_id', user.id)
+          .eq('property_id', property.id)
+          .maybeSingle();
+
+      if (response == null) {
+        throw Exception('The subscription could not be reloaded.');
       }
 
       final paymentResponse = await OpenNestStore.supabase
@@ -1109,8 +1159,10 @@ class _SubscriptionsPlaceholderPageState
       if (!mounted) return;
 
       setState(() {
+        _properties = properties;
+        _selectedPropertyId = property!.id;
         _property = property;
-        _subscription = Map<String, dynamic>.from(response);
+        _subscription = Map<String, dynamic>.from(response!);
         _payments = payments;
         _loading = false;
       });
@@ -1146,6 +1198,34 @@ class _SubscriptionsPlaceholderPageState
 
     return double.tryParse(value?.toString() ?? '') ?? 0;
   }
+
+  double get _creditAmount {
+    final value = _subscription?['available_credit_amount'];
+    return double.tryParse(value?.toString() ?? '') ?? 0;
+  }
+
+  double get _legacyCreditAmount {
+    final legacy = double.tryParse(_subscription?['legacy_credit_amount']?.toString() ?? '') ?? 0;
+    final reviewed = double.tryParse(_subscription?['legacy_credit_reviewed_amount']?.toString() ?? '') ?? 0;
+    return (legacy - reviewed).clamp(0, double.infinity).toDouble();
+  }
+
+  double get _scheduledAmountDue {
+    return (_monthlyAmount - _creditAmount).clamp(0, double.infinity).toDouble();
+  }
+
+  bool get _isPaymentDue {
+    final nextDue = DateTime.tryParse(
+      (_subscription?['grace_until'] ?? _subscription?['next_payment_at'] ?? _subscription?['trial_ends_at'])?.toString() ?? '',
+    );
+    if (nextDue == null) return true;
+    final today = DateTime.now();
+    final dueDay = DateTime(nextDue.toLocal().year, nextDue.toLocal().month, nextDue.toLocal().day);
+    final todayDay = DateTime(today.year, today.month, today.day);
+    return !dueDay.isAfter(todayDay);
+  }
+
+  double get _amountDue => _isPaymentDue ? _scheduledAmountDue : 0;
 
   String get _status {
     return (_subscription?['status']?.toString() ?? 'unknown').toUpperCase();
@@ -1215,6 +1295,16 @@ class _SubscriptionsPlaceholderPageState
       return;
     }
 
+    if (!_isPaymentDue) {
+      _showMessage('Your next subscription payment is not due yet.');
+      return;
+    }
+
+    if (_scheduledAmountDue <= 0) {
+      _showMessage('Your available property credit covers the next billing period.');
+      return;
+    }
+
     final email = user.email?.trim();
 
     if (email == null || email.isEmpty) {
@@ -1235,7 +1325,7 @@ class _SubscriptionsPlaceholderPageState
         body: {
           'owner_id': user.id,
           'property_id': property.id,
-          'amount': _monthlyAmount,
+          'amount': _scheduledAmountDue,
           'email': email,
         },
       );
@@ -1392,6 +1482,29 @@ class _SubscriptionsPlaceholderPageState
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.all(16),
         children: [
+          if (_properties.length > 1)
+            Card(
+              elevation: 0,
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: DropdownButtonFormField<String>(
+                  initialValue: _selectedPropertyId,
+                  decoration: const InputDecoration(
+                    labelText: 'Choose property subscription',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: _properties.map((item) => DropdownMenuItem<String>(
+                    value: item.id,
+                    child: Text(item.name, overflow: TextOverflow.ellipsis),
+                  )).toList(),
+                  onChanged: _loading ? null : (value) {
+                    if (value != null && value != _selectedPropertyId) {
+                      _loadSubscription(propertyId: value);
+                    }
+                  },
+                ),
+              ),
+            ),
           Card(
             elevation: 0,
             child: Padding(
@@ -1483,6 +1596,33 @@ class _SubscriptionsPlaceholderPageState
 
                   const SizedBox(height: 12),
 
+                  _infoRow('Available credit', 'KES ${_creditAmount.toStringAsFixed(2)}'),
+
+                  if (_legacyCreditAmount > 0) ...[
+                    const SizedBox(height: 12),
+                    _infoRow('Legacy credit awaiting review', 'KES ${_legacyCreditAmount.toStringAsFixed(2)}'),
+                  ],
+
+                  const SizedBox(height: 12),
+
+                  _infoRow('Amount due now', 'KES ${_amountDue.toStringAsFixed(2)}'),
+
+                  if (!_isPaymentDue) ...[
+                    const SizedBox(height: 12),
+                    _infoRow('Next scheduled amount', 'KES ${_scheduledAmountDue.toStringAsFixed(2)}'),
+                  ],
+
+                  const SizedBox(height: 12),
+
+                  _infoRow('Next payment date', _formatDate(subscription['grace_until'] ?? subscription['next_payment_at'])),
+
+                  if (subscription['grace_until'] != null) ...[
+                    const SizedBox(height: 12),
+                    _infoRow('Approved grace until', _formatDate(subscription['grace_until'])),
+                  ],
+
+                  const SizedBox(height: 12),
+
                   _infoRow(
                     'Trial ends',
                     _formatDate(subscription['trial_ends_at']),
@@ -1521,7 +1661,7 @@ class _SubscriptionsPlaceholderPageState
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    'Pay your JUMAA subscription securely through Paystack.',
+                    'Your property credit is applied first. Pay the remaining amount securely through Paystack.',
                     style: TextStyle(color: Colors.grey.shade600),
                   ),
                   const SizedBox(height: 18),
@@ -1546,7 +1686,7 @@ class _SubscriptionsPlaceholderPageState
                           ),
                         ),
                         Text(
-                          'KES ${_monthlyAmount.toStringAsFixed(0)}',
+                          'KES ${_amountDue.toStringAsFixed(2)}',
                           style: const TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.bold,
@@ -1561,7 +1701,7 @@ class _SubscriptionsPlaceholderPageState
                   SizedBox(
                     width: double.infinity,
                     child: FilledButton.icon(
-                      onPressed: _paying || _monthlyAmount <= 0
+                      onPressed: _paying || _amountDue <= 0
                           ? null
                           : _payWithPaystack,
                       icon: _paying
@@ -1574,6 +1714,10 @@ class _SubscriptionsPlaceholderPageState
                       label: Text(
                         _paying
                             ? 'OPENING PAYSTACK...'
+                            : !_isPaymentDue
+                            ? 'PAYMENT NOT DUE YET'
+                            : _scheduledAmountDue <= 0
+                            ? 'CREDIT COVERS NEXT PERIOD'
                             : _status == 'ACTIVE'
                             ? 'RENEW WITH PAYSTACK'
                             : 'PAY WITH PAYSTACK',
@@ -1607,7 +1751,7 @@ class _SubscriptionsPlaceholderPageState
             ),
           ),
 
-          if (_payments.isNotEmpty) ...[
+          if (_payments.any((item) => _isSuccessfulPayment(item))) ...[
             const SizedBox(height: 16),
             _buildLatestReceipt(context),
           ],
@@ -1616,7 +1760,14 @@ class _SubscriptionsPlaceholderPageState
     );
   }
 
+  bool _isSuccessfulPayment(Map<String, dynamic> payment) {
+    final status = payment['status']?.toString().toLowerCase();
+    return status == 'success' || status == 'successful';
+  }
+
   String _receiptNumber(Map<String, dynamic> payment) {
+    final stored = payment['receipt_number']?.toString();
+    if (stored != null && stored.trim().isNotEmpty) return stored;
     final reference = payment['reference']?.toString() ?? '';
     final clean = reference.replaceAll(RegExp(r'[^A-Za-z0-9]'), '');
 
@@ -1662,7 +1813,11 @@ class _SubscriptionsPlaceholderPageState
   }
 
   Widget _buildLatestReceipt(BuildContext context) {
-    final payment = _payments.first;
+    final payment = _payments.firstWhere(
+      (item) => _isSuccessfulPayment(item),
+      orElse: () => <String, dynamic>{},
+    );
+    if (payment.isEmpty) return const SizedBox.shrink();
 
     return Card(
       elevation: 0,
@@ -1963,10 +2118,104 @@ class _SubscriptionsPlaceholderPageState
     );
   }
 
+  Future<void> _downloadReceipt(Map<String, dynamic> payment) async {
+    if (!_isSuccessfulPayment(payment)) {
+      _showMessage('Only verified successful payments have downloadable receipts.', isError: true);
+      return;
+    }
+
+    final document = pw.Document();
+    final receipt = _receiptNumber(payment);
+    final paidAt = _formatDateTime(payment['paid_at'] ?? payment['created_at']);
+    final periodStart = payment['period_start']?.toString() ?? '—';
+    final periodEnd = payment['period_end']?.toString() ?? '—';
+
+    document.addPage(
+      pw.Page(
+        pageFormat: PdfPageFormat.a4,
+        margin: const pw.EdgeInsets.all(36),
+        build: (context) => pw.Column(
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
+          children: [
+            pw.Center(
+              child: pw.Column(
+                children: [
+                  pw.Text('JUMAA', style: pw.TextStyle(fontSize: 26, fontWeight: pw.FontWeight.bold)),
+                  pw.SizedBox(height: 4),
+                  pw.Text('PROPERTY SUBSCRIPTION RECEIPT', style: const pw.TextStyle(fontSize: 11)),
+                  pw.SizedBox(height: 8),
+                  pw.Text('PAID', style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold)),
+                ],
+              ),
+            ),
+            pw.SizedBox(height: 28),
+            pw.Divider(),
+            pw.SizedBox(height: 14),
+            _pdfReceiptRow('Receipt number', receipt),
+            _pdfReceiptRow('Property', _property?.name ?? '—'),
+            _pdfReceiptRow('Owner email', OpenNestStore.supabase.auth.currentUser?.email ?? '—'),
+            _pdfReceiptRow('Payment date', paidAt),
+            _pdfReceiptRow('Payment method', (payment['payment_method']?.toString() ?? 'Paystack').toUpperCase()),
+            _pdfReceiptRow('Transaction reference', payment['reference']?.toString() ?? '—'),
+            _pdfReceiptRow('Units', payment['units_count']?.toString() ?? _unitCount.toString()),
+            _pdfReceiptRow('Monthly rate', 'KES ${(double.tryParse(payment['monthly_rate']?.toString() ?? '') ?? _monthlyAmount).toStringAsFixed(2)}'),
+            _pdfReceiptRow('Amount applied to subscription', 'KES ${(double.tryParse(payment['amount_applied']?.toString() ?? '') ?? _paymentAmount(payment)).toStringAsFixed(2)}'),
+            _pdfReceiptRow('Credit generated', 'KES ${(double.tryParse(payment['credit_generated']?.toString() ?? '') ?? 0).toStringAsFixed(2)}'),
+            _pdfReceiptRow('Subscription period', '$periodStart to $periodEnd'),
+            pw.SizedBox(height: 18),
+            pw.Container(
+              width: double.infinity,
+              padding: const pw.EdgeInsets.all(16),
+              decoration: pw.BoxDecoration(
+                border: pw.Border.all(color: PdfColors.grey400),
+                borderRadius: pw.BorderRadius.circular(8),
+              ),
+              child: pw.Column(
+                children: [
+                  pw.Text('TOTAL PAID', style: const pw.TextStyle(fontSize: 10)),
+                  pw.SizedBox(height: 5),
+                  pw.Text('KES ${_paymentAmount(payment).toStringAsFixed(2)}', style: pw.TextStyle(fontSize: 22, fontWeight: pw.FontWeight.bold)),
+                ],
+              ),
+            ),
+            pw.Spacer(),
+            pw.Divider(),
+            pw.Center(
+              child: pw.Text('This receipt confirms a verified JUMAA subscription payment.', style: const pw.TextStyle(fontSize: 9)),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    await Printing.sharePdf(
+      bytes: await document.save(),
+      filename: '$receipt.pdf',
+    );
+  }
+
+  pw.Widget _pdfReceiptRow(String label, String value) {
+    return pw.Padding(
+      padding: const pw.EdgeInsets.symmetric(vertical: 6),
+      child: pw.Row(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          pw.Expanded(child: pw.Text(label, style: const pw.TextStyle(fontSize: 10))),
+          pw.SizedBox(width: 12),
+          pw.Expanded(
+            child: pw.Text(value, textAlign: pw.TextAlign.right, style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _showReceipt(Map<String, dynamic> payment) {
     final amount = _paymentAmount(payment);
     final months = _paymentMonths(payment);
-    final status = payment['status']?.toString().toUpperCase() ?? '—';
+    final status = _isSuccessfulPayment(payment)
+        ? 'SUCCESS'
+        : (payment['status']?.toString().toUpperCase() ?? '—');
 
     showDialog(
       context: context,
@@ -2151,7 +2400,7 @@ class _SubscriptionsPlaceholderPageState
                         Expanded(
                           child: _periodBox(
                             'ENDS',
-                            _formatDate(_subscription?['subscription_ends_at']),
+                            _formatDate(payment['period_end'] ?? _subscription?['subscription_ends_at']),
                           ),
                         ),
                       ],
@@ -2177,6 +2426,20 @@ class _SubscriptionsPlaceholderPageState
 
                     const SizedBox(height: 18),
 
+                    if (status == 'SUCCESS') ...[
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          onPressed: () async {
+                            Navigator.of(dialogContext).pop();
+                            await _downloadReceipt(payment);
+                          },
+                          icon: const Icon(Icons.download),
+                          label: const Text('DOWNLOAD PDF RECEIPT'),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                    ],
                     SizedBox(
                       width: double.infinity,
                       child: FilledButton.icon(
@@ -6492,116 +6755,161 @@ class _ApartmentsPageState extends State<ApartmentsPage> {
           style: TextStyle(fontWeight: FontWeight.bold),
         ),
       ),
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
-            child: TextField(
-              onChanged: (value) {
-                setState(() {
-                  searchQuery = value;
-                });
-              },
-              decoration: InputDecoration(
-                hintText: 'Search apartment or location...',
-                prefixIcon: const Icon(Icons.search_rounded),
-                suffixIcon: searchQuery.isNotEmpty
-                    ? IconButton(
-                        icon: const Icon(Icons.clear_rounded),
-                        onPressed: () {
-                          setState(() {
-                            searchQuery = '';
-                          });
-                        },
-                      )
-                    : null,
-                filled: true,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(16),
-                  borderSide: BorderSide.none,
-                ),
-              ),
-            ),
-          ),
-
-          // ACTIVE FILTERS
-          if (hasFilters)
-            SizedBox(
-              height: 42,
-              child: ListView(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: 16),
+      body: CustomScrollView(
+        slivers: [
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 10),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  if (selectedCounty != null)
-                    _filterChip(Icons.location_city_outlined, selectedCounty!),
-                  if (selectedSubcounty != null)
-                    _filterChip(Icons.map_outlined, selectedSubcounty!),
-                  if (selectedHouseType != null)
-                    _filterChip(Icons.home_work_outlined, selectedHouseType!),
-                  if (minimumRent != null || maximumRent != null)
-                    _filterChip(Icons.payments_outlined, _rentFilterLabel()),
-                  ActionChip(
-                    label: const Text('Clear'),
-                    avatar: const Icon(Icons.close, size: 17),
-                    onPressed: _clearFilters,
+                  const Text(
+                    'Find your next home',
+                    style: TextStyle(
+                      fontSize: 25,
+                      fontWeight: FontWeight.w800,
+                      color: Color(0xFF0B3D2E),
+                    ),
+                  ),
+                  const SizedBox(height: 5),
+                  Text(
+                    'Search apartments and connect with landlords.',
+                    style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          onChanged: (value) => setState(() => searchQuery = value),
+                          decoration: InputDecoration(
+                            hintText: 'Search apartments or locations',
+                            prefixIcon: const Icon(Icons.search_rounded),
+                            suffixIcon: searchQuery.isEmpty
+                                ? null
+                                : IconButton(
+                                    icon: const Icon(Icons.close_rounded),
+                                    onPressed: () => setState(() => searchQuery = ''),
+                                  ),
+                            filled: true,
+                            fillColor: Colors.white,
+                            contentPadding: const EdgeInsets.symmetric(vertical: 13),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(15),
+                              borderSide: BorderSide(color: Colors.grey.shade300),
+                            ),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(15),
+                              borderSide: BorderSide(color: Colors.grey.shade300),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 9),
+                      Material(
+                        color: const Color(0xFF0B3D2E),
+                        borderRadius: BorderRadius.circular(14),
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(14),
+                          onTap: _openFilters,
+                          child: SizedBox(
+                            width: 50,
+                            height: 52,
+                            child: Stack(
+                              alignment: Alignment.center,
+                              children: [
+                                const Icon(Icons.tune_rounded, color: Colors.white),
+                                if (hasFilters)
+                                  Positioned(
+                                    right: 9,
+                                    top: 8,
+                                    child: Container(
+                                      width: 8,
+                                      height: 8,
+                                      decoration: const BoxDecoration(
+                                        color: Colors.orange,
+                                        shape: BoxShape.circle,
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (hasFilters) ...[
+                    const SizedBox(height: 9),
+                    SizedBox(
+                      height: 38,
+                      child: ListView(
+                        scrollDirection: Axis.horizontal,
+                        children: [
+                          if (selectedCounty != null)
+                            _filterChip(Icons.location_city_outlined, selectedCounty!),
+                          if (selectedSubcounty != null)
+                            _filterChip(Icons.map_outlined, selectedSubcounty!),
+                          if (selectedHouseType != null)
+                            _filterChip(Icons.home_work_outlined, selectedHouseType!),
+                          if (minimumRent != null || maximumRent != null)
+                            _filterChip(Icons.payments_outlined, _rentFilterLabel()),
+                          ActionChip(
+                            label: const Text('Clear'),
+                            avatar: const Icon(Icons.close, size: 16),
+                            onPressed: _clearFilters,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 14),
+                  Row(
+                    children: [
+                      Text(
+                        '${results.length} properties found',
+                        style: const TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                      const Spacer(),
+                      if (hasFilters)
+                        TextButton(
+                          onPressed: _clearFilters,
+                          child: const Text('Clear filters'),
+                        ),
+                    ],
                   ),
                 ],
               ),
             ),
-
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-            child: Row(
-              children: [
-                Text(
-                  '${results.length} apartments',
-                  style: TextStyle(
-                    color: Colors.grey.shade700,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const Spacer(),
-                if (hasFilters)
-                  Text(
-                    'Filters active',
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.primary,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
+          ),
+          if (results.isEmpty)
+            SliverFillRemaining(
+              hasScrollBody: false,
+              child: _emptyState(),
+            )
+          else
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(14, 2, 14, 24),
+              sliver: SliverLayoutBuilder(
+                builder: (context, constraints) {
+                  final width = constraints.crossAxisExtent;
+                  final columns = width < 600 ? 2 : width < 1000 ? 3 : 4;
+                  return SliverGrid(
+                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: columns,
+                      crossAxisSpacing: 10,
+                      mainAxisSpacing: 10,
+                      childAspectRatio: width < 600 ? 0.57 : 0.72,
                     ),
-                  ),
-              ],
+                    delegate: SliverChildBuilderDelegate(
+                      (context, index) => _propertyCard(results[index]),
+                      childCount: results.length,
+                    ),
+                  );
+                },
+              ),
             ),
-          ),
-
-          Expanded(
-            child: results.isEmpty
-                ? _emptyState()
-                : ListView.builder(
-                    padding: const EdgeInsets.fromLTRB(16, 4, 16, 100),
-                    itemCount: results.length,
-                    itemBuilder: (context, index) {
-                      return _propertyCard(results[index]);
-                    },
-                  ),
-          ),
         ],
-      ),
-
-      // YOUR REQUESTED FILTER BUTTON AT THE BOTTOM
-      bottomNavigationBar: SafeArea(
-        minimum: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-        child: SizedBox(
-          height: 52,
-          child: FilledButton.icon(
-            onPressed: _openFilters,
-            icon: const Icon(Icons.tune_rounded),
-            label: Text(
-              hasFilters ? 'FILTERS ACTIVE' : 'FILTER APARTMENTS',
-              style: const TextStyle(fontWeight: FontWeight.bold),
-            ),
-          ),
-        ),
       ),
     );
   }
@@ -6629,156 +6937,82 @@ class _ApartmentsPageState extends State<ApartmentsPage> {
     final units = unitsForProperty(property.id);
     final available = availableUnits(property);
     final images = propertyImages(property.id);
-
     final primary = Theme.of(context).colorScheme.primary;
-    final surface = Theme.of(context).colorScheme.surface;
 
     return Card(
-      elevation: 1,
-      margin: const EdgeInsets.only(bottom: 6),
+      elevation: 2,
+      margin: EdgeInsets.zero,
       clipBehavior: Clip.antiAlias,
-      color: surface,
+      color: Colors.white,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: primary.withValues(alpha: 0.08)),
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: primary.withValues(alpha: 0.10)),
       ),
       child: InkWell(
         onTap: () => _showPropertyDetails(property),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             SizedBox(
-              width: 105,
-              height: 118,
+              height: 112,
               child: _propertyImage(property, images),
             ),
-
             Expanded(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(9, 7, 8, 7),
+                padding: const EdgeInsets.fromLTRB(9, 9, 9, 8),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       property.name,
-                      maxLines: 1,
+                      maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                        color: primary,
+                      style: const TextStyle(
+                        color: Color(0xFF17211D),
+                        fontSize: 13,
+                        fontWeight: FontWeight.w800,
                       ),
                     ),
-
-                    const SizedBox(height: 2),
-
+                    const SizedBox(height: 5),
                     Row(
                       children: [
-                        Icon(
-                          Icons.location_on_rounded,
-                          size: 12,
-                          color: primary.withValues(alpha: 0.75),
-                        ),
-                        const SizedBox(width: 2),
+                        const Icon(Icons.location_on_outlined,
+                            size: 13, color: Colors.black54),
+                        const SizedBox(width: 3),
                         Expanded(
                           child: Text(
                             propertyLocation(property),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: const TextStyle(
-                              fontSize: 9.5,
+                              fontSize: 10,
                               color: Colors.black54,
                             ),
                           ),
                         ),
                       ],
                     ),
-
-                    const SizedBox(height: 3),
-
-                    Text(
-                      propertyDescription(property),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 9.5,
-                        color: Colors.black45,
-                      ),
-                    ),
-
-                    const SizedBox(height: 5),
-
-                    Row(
+                    const SizedBox(height: 7),
+                    Wrap(
+                      spacing: 4,
+                      runSpacing: 4,
                       children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 5,
-                            vertical: 3,
-                          ),
-                          decoration: BoxDecoration(
-                            color: primary.withValues(alpha: 0.09),
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                Icons.apartment_rounded,
-                                size: 11,
-                                color: primary,
-                              ),
-                              const SizedBox(width: 2),
-                              Text(
-                                '${units.length}',
-                                style: TextStyle(
-                                  fontSize: 9,
-                                  fontWeight: FontWeight.w700,
-                                  color: primary,
-                                ),
-                              ),
-                            ],
-                          ),
+                        _compactPropertyTag(
+                          Icons.apartment_outlined,
+                          '${units.length} units',
+                          primary,
                         ),
-
-                        const SizedBox(width: 4),
-
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 5,
-                            vertical: 3,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.green.withValues(alpha: 0.10),
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Icon(
-                                Icons.check_circle_rounded,
-                                size: 11,
-                                color: Colors.green,
-                              ),
-                              const SizedBox(width: 2),
-                              Text(
-                                '$available available',
-                                style: const TextStyle(
-                                  fontSize: 9,
-                                  fontWeight: FontWeight.w700,
-                                  color: Colors.green,
-                                ),
-                              ),
-                            ],
-                          ),
+                        _compactPropertyTag(
+                          Icons.check_circle_outline,
+                          '$available vacant',
+                          Colors.green.shade700,
                         ),
                       ],
                     ),
-
-                    const SizedBox(height: 5),
-
+                    const Spacer(),
                     SizedBox(
-                      height: 25,
                       width: double.infinity,
+                      height: 34,
                       child: FilledButton(
                         onPressed: () => _showPropertyDetails(property),
                         style: FilledButton.styleFrom(
@@ -6787,7 +7021,7 @@ class _ApartmentsPageState extends State<ApartmentsPage> {
                           visualDensity: VisualDensity.compact,
                           tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                           shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(7),
+                            borderRadius: BorderRadius.circular(9),
                           ),
                         ),
                         child: const Text(
@@ -6805,6 +7039,31 @@ class _ApartmentsPageState extends State<ApartmentsPage> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _compactPropertyTag(IconData icon, String label, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 5),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.09),
+        borderRadius: BorderRadius.circular(7),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 11, color: color),
+          const SizedBox(width: 3),
+          Text(
+            label,
+            style: TextStyle(
+              color: color,
+              fontSize: 9,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -10866,12 +11125,12 @@ class _LandlordLoginPageState extends State<LandlordLoginPage> {
   bool isLoading = false;
 
   Future<void> _login() async {
-    final email = emailController.text.trim().toLowerCase();
+    final identifier = emailController.text.trim();
     final password = passwordController.text;
 
-    if (email.isEmpty || password.isEmpty) {
+    if (identifier.isEmpty || password.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Enter your email and password.')),
+        const SnackBar(content: Text('Enter your email or phone number and password.')),
       );
       return;
     }
@@ -10881,12 +11140,11 @@ class _LandlordLoginPageState extends State<LandlordLoginPage> {
     });
 
     try {
-      final response = await OpenNestStore.supabase.auth.signInWithPassword(
-        email: email,
-        password: password,
-      );
+      await _signInWithEmailOrPhone(identifier, password);
 
-      if (response.user == null) {
+      final responseUser = OpenNestStore.supabase.auth.currentUser;
+
+      if (responseUser == null) {
         throw const AuthException('Login failed.');
       }
 
@@ -11015,11 +11273,13 @@ class _LandlordLoginPageState extends State<LandlordLoginPage> {
                   const SizedBox(height: 32),
                   TextField(
                     controller: emailController,
-                    keyboardType: TextInputType.emailAddress,
+                    keyboardType: TextInputType.text,
+                    autocorrect: false,
                     style: const TextStyle(color: Colors.black, fontSize: 16),
                     cursorColor: Colors.black,
                     decoration: InputDecoration(
-                      labelText: 'Email',
+                      labelText: 'Email or phone number',
+                      hintText: 'Enter your registered email or phone number',
                       labelStyle: const TextStyle(color: Colors.grey),
                       prefixIcon: const Icon(
                         Icons.email_outlined,
@@ -14909,10 +15169,59 @@ class _RegisterApartmentPageState extends State<RegisterApartmentPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black,
+    final lightTheme = ThemeData(
+      useMaterial3: true,
+      brightness: Brightness.light,
+      applyElevationOverlayColor: false,
+      colorScheme: ColorScheme.fromSeed(
+        seedColor: const Color(0xFF0B3D2E),
+        brightness: Brightness.light,
+        surface: Colors.white,
+      ),
+      scaffoldBackgroundColor: Colors.white,
+      canvasColor: Colors.white,
+      cardColor: Colors.white,
+      appBarTheme: const AppBarTheme(
+        backgroundColor: Colors.white,
+        foregroundColor: Color(0xFF0B3D2E),
+        elevation: 0,
+        surfaceTintColor: Colors.transparent,
+      ),
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: const Color(0xFFF5F8F6),
+        labelStyle: const TextStyle(color: Color(0xFF52615A)),
+        hintStyle: const TextStyle(color: Color(0xFF7A8580)),
+        prefixIconColor: const Color(0xFF0B3D2E),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: const BorderSide(color: Color(0xFFDCE5DF)),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: const BorderSide(color: Color(0xFFDCE5DF)),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: const BorderSide(color: Color(0xFF0B3D2E), width: 1.5),
+        ),
+      ),
+      dropdownMenuTheme: const DropdownMenuThemeData(
+        textStyle: TextStyle(color: Color(0xFF17211D)),
+        menuStyle: MenuStyle(
+          backgroundColor: WidgetStatePropertyAll(Colors.white),
+        ),
+      ),
+    );
+
+    return MediaQuery(
+      data: MediaQuery.of(context).copyWith(platformBrightness: Brightness.light),
+      child: Theme(
+        data: lightTheme,
+        child: Scaffold(
+          backgroundColor: Colors.white,
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
+        backgroundColor: Colors.white,
         elevation: 0,
         foregroundColor: const Color(0xFF0B3D2E),
         title: const Text(
@@ -15378,6 +15687,8 @@ class _RegisterApartmentPageState extends State<RegisterApartmentPage> {
           ],
         ),
       ),
+        ),
+      ),
     );
   }
 
@@ -15400,36 +15711,36 @@ class _RegisterApartmentPageState extends State<RegisterApartmentPage> {
         keyboardType: keyboardType,
         obscureText: obscureText,
         maxLines: obscureText ? 1 : maxLines,
-        style: const TextStyle(color: Colors.white, fontSize: 15),
-        cursorColor: const Color(0xFF39B982),
+        style: const TextStyle(color: Color(0xFF17211D), fontSize: 15),
+        cursorColor: const Color(0xFF0B3D2E),
         decoration: InputDecoration(
           labelText: label,
           hintText: hint,
-          labelStyle: const TextStyle(color: Colors.white70),
+          labelStyle: const TextStyle(color: Colors.black54),
           floatingLabelStyle: const TextStyle(
-            color: Color(0xFF39B982),
+            color: Color(0xFF0B3D2E),
             fontWeight: FontWeight.w600,
           ),
-          hintStyle: const TextStyle(color: Colors.white38),
-          prefixIcon: Icon(icon, color: Colors.white70),
+          hintStyle: const TextStyle(color: Colors.black38),
+          prefixIcon: Icon(icon, color: Color(0xFF0B3D2E)),
           suffixIcon: suffixIcon,
           filled: true,
-          fillColor: const Color(0xFF171717),
+          fillColor: const Color(0xFFF5F8F6),
           contentPadding: const EdgeInsets.symmetric(
             horizontal: 18,
             vertical: 17,
           ),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(16),
-            borderSide: const BorderSide(color: Colors.white12),
+            borderSide: const BorderSide(color: Color(0xFFDCE5DF)),
           ),
           enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(16),
-            borderSide: const BorderSide(color: Colors.white12),
+            borderSide: const BorderSide(color: Color(0xFFDCE5DF)),
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(16),
-            borderSide: const BorderSide(color: Color(0xFF39B982), width: 1.5),
+            borderSide: const BorderSide(color: Color(0xFF0B3D2E), width: 1.5),
           ),
         ),
       ),
@@ -15443,10 +15754,12 @@ class _RegisterApartmentPageState extends State<RegisterApartmentPage> {
 class _PropertyImageCarousel extends StatefulWidget {
   final List<String> images;
   final Widget placeholder;
+  final double height;
 
   const _PropertyImageCarousel({
     required this.images,
     required this.placeholder,
+    this.height = 220,
   });
 
   @override
@@ -15512,7 +15825,7 @@ class _PropertyImageCarouselState extends State<_PropertyImageCarousel> {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      height: 220,
+      height: widget.height,
       width: double.infinity,
       child: ClipRRect(
         borderRadius: BorderRadius.circular(18),
@@ -17084,298 +17397,246 @@ class _PublicUserPageState extends State<PublicUserPage> {
           style: TextStyle(fontWeight: FontWeight.bold),
         ),
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Find your next home',
-              style: TextStyle(
-                fontSize: 28,
-                fontWeight: FontWeight.w800,
-                color: Color(0xFF0B3D2E),
-              ),
-            ),
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final crossAxisCount = constraints.maxWidth < 850
+              ? 2
+              : constraints.maxWidth < 1200
+                  ? 3
+                  : 4;
 
-            const SizedBox(height: 8),
-
-            const Text(
-              'Search apartments and connect with landlords.',
-              style: TextStyle(color: Colors.black54, height: 1.4),
-            ),
-
-            const SizedBox(height: 24),
-
-            TextField(
-              controller: _searchController,
-              decoration: InputDecoration(
-                hintText: 'Search by apartment, type or rent...',
-                prefixIcon: const Icon(Icons.search),
-                suffixIcon: _search.isNotEmpty
-                    ? IconButton(
-                        icon: const Icon(Icons.clear),
-                        onPressed: () {
-                          _searchController.clear();
-                        },
-                      )
-                    : null,
-                filled: true,
-                fillColor: Colors.white,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(18),
-                  borderSide: BorderSide.none,
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 14),
-
-            Row(
-              children: [
-                Expanded(
-                  child: Container(
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(18),
-                      boxShadow: [
-                        BoxShadow(
-                          color: const Color(0xFF0B3D2E)
-                              .withValues(alpha: 0.16),
-                          blurRadius: 14,
-                          offset: const Offset(0, 6),
-                        ),
-                      ],
-                    ),
-                    child: Material(
-                      color: Colors.transparent,
-                      borderRadius: BorderRadius.circular(18),
-                      child: InkWell(
-                        onTap: _openMarketplaceFilters,
-                        borderRadius: BorderRadius.circular(18),
-                        child: Ink(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 14,
-                          ),
-                          decoration: BoxDecoration(
-                            gradient: _hasMarketplaceFilters
-                                ? const LinearGradient(
-                                    colors: [
-                                      Color(0xFF2563EB),
-                                      Color(0xFF7C3AED),
-                                      Color(0xFFDB2777),
-                                    ],
-                                    begin: Alignment.centerLeft,
-                                    end: Alignment.centerRight,
-                                  )
-                                : const LinearGradient(
-                                    colors: [
-                                      Color(0xFF2563EB),
-                                      Color(0xFF4F46E5),
-                                      Color(0xFF9333EA),
-                                    ],
-                                    begin: Alignment.centerLeft,
-                                    end: Alignment.centerRight,
-                                  ),
-                            borderRadius: BorderRadius.circular(18),
-                            border: Border.all(
-                              color: Colors.white.withValues(alpha: 0.12),
-                            ),
-                          ),
-                          child: Row(
-                            children: [
-                              Container(
-                                width: 42,
-                                height: 42,
-                                decoration: BoxDecoration(
-                                  color: _hasMarketplaceFilters
-                                      ? Colors.white.withValues(alpha: 0.16)
-                                      : const Color(0xFF0B3D2E)
-                                            .withValues(alpha: 0.09),
-                                  borderRadius: BorderRadius.circular(13),
-                                ),
-                                child: Icon(
-                                  Icons.tune_rounded,
-                                  color: Colors.white,
-                                  size: 23,
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      _hasMarketplaceFilters
-                                          ? 'FILTERS ACTIVE'
-                                          : 'FILTER APARTMENTS',
-                                      style: TextStyle(
-                                        fontSize: 15,
-                                        fontWeight: FontWeight.w900,
-                                        letterSpacing: 0.3,
-                                        color: Colors.white,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 3),
-                                    Text(
-                                      _hasMarketplaceFilters
-                                          ? 'Tap to change your filters'
-                                          : 'Find apartments that match you',
-                                      style: TextStyle(
-                                        fontSize: 11.5,
-                                        fontWeight: FontWeight.w500,
-                                        color: _hasMarketplaceFilters
-                                            ? Colors.white.withValues(
-                                                alpha: 0.82,
-                                              )
-                                            : Colors.black54,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              Container(
-                                padding: const EdgeInsets.all(8),
-                                decoration: BoxDecoration(
-                                  color: _hasMarketplaceFilters
-                                      ? Colors.white.withValues(alpha: 0.14)
-                                      : const Color(0xFF0B3D2E)
-                                            .withValues(alpha: 0.07),
-                                  shape: BoxShape.circle,
-                                ),
-                                child: Icon(
-                                  Icons.arrow_forward_ios_rounded,
-                                  size: 15,
-                                  color: Colors.white,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-                if (_hasMarketplaceFilters) ...[
-                  const SizedBox(width: 10),
-                  Material(
-                    color: Colors.transparent,
-                    child: InkWell(
-                      onTap: _clearMarketplaceFilters,
-                      borderRadius: BorderRadius.circular(16),
-                      child: Ink(
-                        width: 52,
-                        height: 70,
-                        decoration: BoxDecoration(
-                          color: Colors.red.withValues(alpha: 0.07),
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(
-                            color: Colors.red.withValues(alpha: 0.18),
-                          ),
-                        ),
-                        child: const Icon(
-                          Icons.close_rounded,
-                          color: Colors.red,
-                          size: 23,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ],
-            ),
-
-            const SizedBox(height: 14),
-
-            Text(
-              '${properties.length} propert${properties.length == 1 ? 'y' : 'ies'} found',
-              style: const TextStyle(fontWeight: FontWeight.w600),
-            ),
-
-            const SizedBox(height: 12),
-
-            Expanded(
-              child: _loadingApartments
-                  ? const Center(
-                      child: CircularProgressIndicator(
+          return CustomScrollView(
+            slivers: [
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(16, 18, 16, 10),
+                sliver: SliverList(
+                  delegate: SliverChildListDelegate([
+                    const Text(
+                      'Find your next home',
+                      style: TextStyle(
+                        fontSize: 27,
+                        fontWeight: FontWeight.w800,
                         color: Color(0xFF0B3D2E),
                       ),
-                    )
-                  : _loadError != null
-                  ? Center(
-                      child: Padding(
-                        padding: const EdgeInsets.all(24),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.error_outline,
-                              size: 60,
-                              color: Colors.red.shade300,
-                            ),
-                            const SizedBox(height: 12),
-                            const Text(
-                              'Could not load apartments',
-                              style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
+                    ),
+                    const SizedBox(height: 6),
+                    const Text(
+                      'Search apartments and connect with landlords.',
+                      style: TextStyle(color: Colors.black54, height: 1.4),
+                    ),
+                    const SizedBox(height: 18),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: _searchController,
+                            textInputAction: TextInputAction.search,
+                            decoration: InputDecoration(
+                              hintText: 'Search apartments...',
+                              prefixIcon: const Icon(Icons.search_rounded),
+                              suffixIcon: _search.isNotEmpty
+                                  ? IconButton(
+                                      tooltip: 'Clear search',
+                                      icon: const Icon(Icons.close_rounded),
+                                      onPressed: _searchController.clear,
+                                    )
+                                  : null,
+                              filled: true,
+                              fillColor: Colors.white,
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 13,
+                              ),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(15),
+                                borderSide: const BorderSide(
+                                  color: Color(0xFFDCE5DF),
+                                ),
+                              ),
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(15),
+                                borderSide: const BorderSide(
+                                  color: Color(0xFFDCE5DF),
+                                ),
+                              ),
+                              focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(15),
+                                borderSide: const BorderSide(
+                                  color: Color(0xFF0B3D2E),
+                                  width: 1.5,
+                                ),
                               ),
                             ),
-                            const SizedBox(height: 8),
-                            Text(
-                              _loadError!,
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(color: Colors.black54),
-                            ),
-                            const SizedBox(height: 16),
-                            ElevatedButton.icon(
-                              onPressed: _loadApartmentsInBackground,
-                              icon: const Icon(Icons.refresh),
-                              label: const Text('Retry'),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: const Color(0xFF0B3D2E),
-                                foregroundColor: Colors.white,
-                              ),
-                            ),
-                          ],
+                          ),
                         ),
+                        const SizedBox(width: 9),
+                        Material(
+                          color: _hasMarketplaceFilters
+                              ? const Color(0xFF0B3D2E)
+                              : const Color(0xFFEAF2ED),
+                          borderRadius: BorderRadius.circular(15),
+                          child: InkWell(
+                            onTap: _openMarketplaceFilters,
+                            borderRadius: BorderRadius.circular(15),
+                            child: SizedBox(
+                              width: 52,
+                              height: 52,
+                              child: Stack(
+                                alignment: Alignment.center,
+                                children: [
+                                  Icon(
+                                    Icons.tune_rounded,
+                                    color: _hasMarketplaceFilters
+                                        ? Colors.white
+                                        : const Color(0xFF0B3D2E),
+                                    size: 24,
+                                  ),
+                                  if (_hasMarketplaceFilters)
+                                    Positioned(
+                                      top: 9,
+                                      right: 9,
+                                      child: Container(
+                                        width: 7,
+                                        height: 7,
+                                        decoration: const BoxDecoration(
+                                          color: Color(0xFF72D6A6),
+                                          shape: BoxShape.circle,
+                                        ),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                        if (_hasMarketplaceFilters) ...[
+                          const SizedBox(width: 5),
+                          IconButton(
+                            tooltip: 'Clear filters',
+                            onPressed: _clearMarketplaceFilters,
+                            icon: const Icon(
+                              Icons.filter_alt_off_rounded,
+                              color: Colors.red,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+                    Text(
+                      '${properties.length} propert${properties.length == 1 ? 'y' : 'ies'} found',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF34443B),
                       ),
-                    )
-                  : properties.isEmpty
-                  ? Center(
+                    ),
+                  ]),
+                ),
+              ),
+              if (_loadingApartments)
+                const SliverFillRemaining(
+                  hasScrollBody: false,
+                  child: Center(
+                    child: CircularProgressIndicator(
+                      color: Color(0xFF0B3D2E),
+                    ),
+                  ),
+                )
+              else if (_loadError != null)
+                SliverFillRemaining(
+                  hasScrollBody: false,
+                  child: Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(24),
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           Icon(
-                            Icons.home_work_outlined,
-                            size: 70,
-                            color: Colors.grey.shade400,
+                            Icons.error_outline,
+                            size: 56,
+                            color: Colors.red.shade300,
                           ),
-                          const SizedBox(height: 15),
+                          const SizedBox(height: 12),
                           const Text(
-                            'No apartments found',
+                            'Could not load apartments',
                             style: TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.bold,
                             ),
                           ),
-                          const SizedBox(height: 6),
-                          const Text(
-                            'Try another search.',
-                            style: TextStyle(color: Colors.black54),
+                          const SizedBox(height: 8),
+                          Text(
+                            _loadError!,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(color: Colors.black54),
+                          ),
+                          const SizedBox(height: 16),
+                          ElevatedButton.icon(
+                            onPressed: _loadApartmentsInBackground,
+                            icon: const Icon(Icons.refresh),
+                            label: const Text('Retry'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF0B3D2E),
+                              foregroundColor: Colors.white,
+                            ),
                           ),
                         ],
                       ),
-                    )
-                  : ListView.builder(
-                      itemCount: properties.length,
-                      itemBuilder: (context, index) {
-                        return _propertyCard(properties[index]);
-                      },
                     ),
-            ),
-          ],
-        ),
+                  ),
+                )
+              else if (properties.isEmpty)
+                const SliverFillRemaining(
+                  hasScrollBody: false,
+                  child: Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.home_work_outlined,
+                          size: 64,
+                          color: Colors.black26,
+                        ),
+                        SizedBox(height: 14),
+                        Text(
+                          'No apartments found',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        SizedBox(height: 6),
+                        Text(
+                          'Try another search or filter.',
+                          style: TextStyle(color: Colors.black54),
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+              else
+                SliverPadding(
+                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
+                  sliver: SliverGrid(
+                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: crossAxisCount,
+                      crossAxisSpacing: 12,
+                      mainAxisSpacing: 12,
+                      childAspectRatio: constraints.maxWidth < 850
+                          ? 0.66
+                          : constraints.maxWidth < 1200
+                              ? 0.72
+                              : 0.78,
+                    ),
+                    delegate: SliverChildBuilderDelegate(
+                      (context, index) => _propertyCard(properties[index]),
+                      childCount: properties.length,
+                    ),
+                  ),
+                ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -17492,14 +17753,182 @@ class _PublicUserPageState extends State<PublicUserPage> {
 
   Widget _propertyCard(_PublicPropertyListing listing) {
     final property = listing.property;
-
+    final compact = MediaQuery.sizeOf(context).width < 850;
     final images = <String>[
       ...property.imagePaths,
       ...listing.vacantUnits.expand((unit) => unit.imagePaths),
     ].where((image) => image.trim().isNotEmpty).toSet().toList();
 
+    final photo = _PropertyImageCarousel(
+      images: images,
+      height: compact ? 126 : 220,
+      placeholder: Container(
+        color: const Color(0xFFE8F3EE),
+        child: const Center(
+          child: Icon(Icons.apartment, size: 52, color: Color(0xFF0B3D2E)),
+        ),
+      ),
+    );
+
+    if (compact) {
+      return Card(
+        margin: EdgeInsets.zero,
+        elevation: 2,
+        clipBehavior: Clip.antiAlias,
+        color: Colors.white,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(color: Colors.grey.withValues(alpha: 0.12)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            SizedBox(
+              height: 126,
+              child: images.isEmpty
+                  ? Container(
+                      color: const Color(0xFFE8F3EE),
+                      child: const Center(
+                        child: Icon(Icons.apartment,
+                            size: 52, color: Color(0xFF0B3D2E)),
+                      ),
+                    )
+                  : photo,
+            ),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(9, 8, 9, 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            property.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w800,
+                              color: Color(0xFF17211D),
+                            ),
+                          ),
+                        ),
+                        if (listing.isBoosted)
+                          const Icon(Icons.local_fire_department,
+                              size: 15, color: Colors.deepOrange),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        const Icon(Icons.location_on_outlined,
+                            size: 13, color: Colors.black54),
+                        const SizedBox(width: 3),
+                        Expanded(
+                          child: Text(
+                            property.location.isNotEmpty
+                                ? property.location
+                                : property.address.isNotEmpty
+                                    ? property.address
+                                    : 'Location not provided',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                                fontSize: 10, color: Colors.black54),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'From KSh ${listing.lowestRent}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Color(0xFF0B3D2E),
+                        fontWeight: FontWeight.w800,
+                        fontSize: 12,
+                      ),
+                    ),
+                    const Spacer(),
+                    Row(
+                      children: [
+                        InkWell(
+                          onTap: listing.vacantUnits.isEmpty
+                              ? null
+                              : () => _togglePropertyLike(listing.vacantUnits.first),
+                          borderRadius: BorderRadius.circular(20),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 3, vertical: 4),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  listing.isLiked
+                                      ? Icons.favorite
+                                      : Icons.favorite_border,
+                                  color: listing.isLiked
+                                      ? Colors.red
+                                      : Colors.grey.shade700,
+                                  size: 17,
+                                ),
+                                const SizedBox(width: 3),
+                                Text(
+                                  '${listing.likeCount}',
+                                  style: const TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w700),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const Spacer(),
+                        SizedBox(
+                          height: 31,
+                          child: FilledButton(
+                            onPressed: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => PublicPropertyDetailsPage(
+                                      property: property),
+                                ),
+                              );
+                            },
+                            style: FilledButton.styleFrom(
+                              backgroundColor: const Color(0xFF0B3D2E),
+                              foregroundColor: Colors.white,
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 11),
+                              visualDensity: VisualDensity.compact,
+                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(9),
+                              ),
+                            ),
+                            child: const Text('VIEW',
+                                style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.bold)),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
     return Card(
-      margin: const EdgeInsets.only(bottom: 16),
+      margin: EdgeInsets.zero,
       elevation: 2,
       clipBehavior: Clip.antiAlias,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
@@ -17507,31 +17936,15 @@ class _PublicUserPageState extends State<PublicUserPage> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (images.isNotEmpty)
-            _PropertyImageCarousel(
-              images: images,
-              placeholder: Container(
-                height: 190,
-                width: double.infinity,
-                color: const Color(0xFFE8F3EE),
-                child: const Icon(
-                  Icons.apartment,
-                  size: 60,
-                  color: Color(0xFF0B3D2E),
-                ),
-              ),
-            )
+            photo
           else
             Container(
               height: 190,
               width: double.infinity,
               color: const Color(0xFFE8F3EE),
-              child: const Icon(
-                Icons.apartment,
-                size: 60,
-                color: Color(0xFF0B3D2E),
-              ),
+              child: const Icon(Icons.apartment,
+                  size: 60, color: Color(0xFF0B3D2E)),
             ),
-
           Padding(
             padding: const EdgeInsets.all(16),
             child: Column(
@@ -17541,156 +17954,87 @@ class _PublicUserPageState extends State<PublicUserPage> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Expanded(
-                      child: Text(
-                        property.name,
-                        style: const TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
+                      child: Text(property.name,
+                          style: const TextStyle(
+                              fontSize: 20, fontWeight: FontWeight.bold),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis),
                     ),
-
                     if (listing.isBoosted)
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 9,
-                          vertical: 5,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.orange.shade100,
-                          borderRadius: BorderRadius.circular(9),
-                        ),
-                        child: const Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              Icons.local_fire_department,
-                              size: 14,
-                              color: Colors.deepOrange,
-                            ),
-                            SizedBox(width: 3),
-                            Text(
-                              'BOOSTED',
-                              style: TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.deepOrange,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
+                      const Icon(Icons.local_fire_department,
+                          color: Colors.deepOrange),
                   ],
                 ),
-
                 const SizedBox(height: 8),
-
                 Row(
                   children: [
-                    const Icon(
-                      Icons.location_on_outlined,
-                      size: 18,
-                      color: Colors.grey,
-                    ),
+                    const Icon(Icons.location_on_outlined,
+                        size: 18, color: Colors.grey),
                     const SizedBox(width: 5),
                     Expanded(
                       child: Text(
                         property.location.isNotEmpty
                             ? property.location
                             : property.address.isNotEmpty
-                            ? property.address
-                            : 'Location not provided',
-                        style: const TextStyle(color: Colors.black54),
+                                ? property.address
+                                : 'Location not provided',
+                        style: const TextStyle(
+                            color: Colors.black54, fontSize: 14),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
                   ],
                 ),
-
                 const SizedBox(height: 12),
-
                 Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
+                  spacing: 5,
+                  runSpacing: 5,
                   children: [
                     _propertyInfoChip(
                       Icons.home_work_outlined,
-                      '${listing.vacantCount} vacant '
-                      '${listing.vacantCount == 1 ? 'unit' : 'units'}',
+                      '${listing.vacantCount} vacant ${listing.vacantCount == 1 ? 'unit' : 'units'}',
                     ),
                     _propertyInfoChip(
-                      Icons.payments_outlined,
-                      'From KSh ${listing.lowestRent}',
-                    ),
+                        Icons.payments_outlined,
+                        'From KSh ${listing.lowestRent}'),
                   ],
                 ),
-
                 if (listing.unitTypes.isNotEmpty) ...[
                   const SizedBox(height: 10),
-                  Text(
-                    listing.unitTypes.join(' • '),
-                    style: const TextStyle(color: Colors.black54, fontSize: 13),
-                  ),
+                  Text(listing.unitTypes.join(' • '),
+                      style: const TextStyle(
+                          color: Colors.black54, fontSize: 13)),
                 ],
-
                 if (property.description.trim().isNotEmpty) ...[
                   const SizedBox(height: 10),
-                  Text(
-                    property.description,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(color: Colors.black54, height: 1.35),
-                  ),
+                  Text(property.description,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                          color: Colors.black54, height: 1.35)),
                 ],
-
                 const SizedBox(height: 14),
-
                 Row(
                   children: [
                     InkWell(
                       onTap: listing.vacantUnits.isEmpty
                           ? null
-                          : () =>
-                                _togglePropertyLike(listing.vacantUnits.first),
+                          : () => _togglePropertyLike(listing.vacantUnits.first),
                       borderRadius: BorderRadius.circular(22),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 8,
-                        ),
-                        decoration: BoxDecoration(
-                          color: listing.isLiked
-                              ? Colors.red.withValues(alpha: 0.10)
-                              : Colors.grey.withValues(alpha: 0.08),
-                          borderRadius: BorderRadius.circular(22),
-                          border: Border.all(
-                            color: listing.isLiked
-                                ? Colors.red.withValues(alpha: 0.35)
-                                : Colors.grey.withValues(alpha: 0.25),
-                          ),
-                        ),
+                      child: Padding(
+                        padding: const EdgeInsets.all(8),
                         child: Row(
-                          mainAxisSize: MainAxisSize.min,
                           children: [
                             Icon(
-                              listing.isLiked
-                                  ? Icons.favorite
-                                  : Icons.favorite_border,
-                              size: 21,
-                              color: listing.isLiked
-                                  ? Colors.red
-                                  : Colors.grey.shade700,
-                            ),
-                            const SizedBox(width: 7),
-                            Text(
-                              '${listing.likeCount} '
-                              '${listing.likeCount == 1 ? 'like' : 'likes'}',
-                              style: TextStyle(
-                                fontWeight: FontWeight.w700,
+                                listing.isLiked
+                                    ? Icons.favorite
+                                    : Icons.favorite_border,
                                 color: listing.isLiked
                                     ? Colors.red
-                                    : Colors.grey.shade800,
-                              ),
-                            ),
+                                    : Colors.grey.shade700),
+                            const SizedBox(width: 4),
+                            Text('${listing.likeCount} likes'),
                           ],
                         ),
                       ),
@@ -17711,9 +18055,7 @@ class _PublicUserPageState extends State<PublicUserPage> {
                     ),
                   ],
                 ),
-
                 const SizedBox(height: 10),
-
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton.icon(
@@ -17733,8 +18075,7 @@ class _PublicUserPageState extends State<PublicUserPage> {
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 13),
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
+                          borderRadius: BorderRadius.circular(12)),
                     ),
                   ),
                 ),
@@ -17824,12 +18165,12 @@ class _JUMAALoginPageState extends State<JUMAALoginPage> {
   }
 
   Future<void> _login() async {
-    final email = _emailController.text.trim().toLowerCase();
+    final identifier = _emailController.text.trim();
     final password = _passwordController.text.trim();
 
-    if (email.isEmpty || password.isEmpty) {
+    if (identifier.isEmpty || password.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Enter your email and password.')),
+        const SnackBar(content: Text('Enter your email or phone number and password.')),
       );
       return;
     }
@@ -17842,12 +18183,9 @@ class _JUMAALoginPageState extends State<JUMAALoginPage> {
       // ----------------------------------------------------------
       // JUMAA LOGIN — SUPABASE AUTH
       // ----------------------------------------------------------
-      final response = await OpenNestStore.supabase.auth.signInWithPassword(
-        email: email,
-        password: password,
-      );
+      await _signInWithEmailOrPhone(identifier, password);
 
-      final user = response.user;
+      final user = OpenNestStore.supabase.auth.currentUser;
 
       if (user == null) {
         throw Exception('Supabase did not return a user.');
@@ -17977,7 +18315,7 @@ class _JUMAALoginPageState extends State<JUMAALoginPage> {
         final prefs = await SharedPreferences.getInstance();
 
         await prefs.setBool('jumaa_logged_in', true);
-        await prefs.setString('jumaa_logged_in_email', email);
+        await prefs.setString('jumaa_logged_in_email', user.email ?? identifier);
         await prefs.setString('jumaa_logged_in_role', 'landlord');
 
         if (!mounted) return;
@@ -18054,7 +18392,7 @@ class _JUMAALoginPageState extends State<JUMAALoginPage> {
         final prefs = await SharedPreferences.getInstance();
 
         await prefs.setBool('jumaa_logged_in', true);
-        await prefs.setString('jumaa_logged_in_email', email);
+        await prefs.setString('jumaa_logged_in_email', user.email ?? identifier);
         await prefs.setString('jumaa_logged_in_role', 'tenant');
 
         if (!mounted) return;
@@ -18082,7 +18420,7 @@ class _JUMAALoginPageState extends State<JUMAALoginPage> {
 
         final prefs = await SharedPreferences.getInstance();
         await prefs.setBool('jumaa_logged_in', true);
-        await prefs.setString('jumaa_logged_in_email', email);
+        await prefs.setString('jumaa_logged_in_email', user.email ?? identifier);
         await prefs.setString('jumaa_logged_in_role', 'jumaa_owner');
 
         if (!mounted) return;
@@ -18107,7 +18445,7 @@ class _JUMAALoginPageState extends State<JUMAALoginPage> {
         final prefs = await SharedPreferences.getInstance();
 
         await prefs.setBool('jumaa_logged_in', true);
-        await prefs.setString('jumaa_logged_in_email', email);
+        await prefs.setString('jumaa_logged_in_email', user.email ?? identifier);
         await prefs.setString('jumaa_logged_in_role', 'owner');
 
         if (!mounted) return;
@@ -18223,10 +18561,12 @@ class _JUMAALoginPageState extends State<JUMAALoginPage> {
 
           TextField(
             controller: _emailController,
-            keyboardType: TextInputType.emailAddress,
+            keyboardType: TextInputType.text,
+            autocorrect: false,
             style: const TextStyle(color: Colors.black, fontSize: 16),
             decoration: InputDecoration(
-              labelText: 'Email',
+              labelText: 'Email or phone number',
+              hintText: 'Enter your registered email or phone number',
               prefixIcon: const Icon(Icons.email_outlined),
               filled: true,
               fillColor: Colors.white,
