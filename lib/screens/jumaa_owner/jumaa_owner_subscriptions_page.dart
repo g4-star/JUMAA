@@ -179,21 +179,33 @@ class _JumaaOwnerSubscriptionsPageState
               children: [
                 const Text('Choose how the revised date should work.'),
                 const SizedBox(height: 8),
-                RadioListTile<String>(
-                  contentPadding: EdgeInsets.zero,
-                  value: 'temporary_grace',
+                RadioGroup<String>(
                   groupValue: mode,
-                  onChanged: (value) => setDialogState(() => mode = value!),
-                  title: const Text('Temporary grace'),
-                  subtitle: const Text('Keep the regular billing cycle unchanged.'),
-                ),
-                RadioListTile<String>(
-                  contentPadding: EdgeInsets.zero,
-                  value: 'shift_cycle',
-                  groupValue: mode,
-                  onChanged: (value) => setDialogState(() => mode = value!),
-                  title: const Text('Shift billing cycle'),
-                  subtitle: const Text('Make the new date the future billing anchor.'),
+                  onChanged: (value) {
+                    if (value != null) {
+                      setDialogState(() => mode = value);
+                    }
+                  },
+                  child: Column(
+                    children: const [
+                      RadioListTile<String>(
+                        contentPadding: EdgeInsets.zero,
+                        value: 'temporary_grace',
+                        title: Text('Temporary grace'),
+                        subtitle: Text(
+                          'Keep the regular billing cycle unchanged.',
+                        ),
+                      ),
+                      RadioListTile<String>(
+                        contentPadding: EdgeInsets.zero,
+                        value: 'shift_cycle',
+                        title: Text('Shift billing cycle'),
+                        subtitle: Text(
+                          'Make the new date the future billing anchor.',
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
                 const SizedBox(height: 8),
                 OutlinedButton.icon(
