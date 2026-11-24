@@ -31,6 +31,7 @@ import 'models/landlord.dart';
 import 'models/tenant.dart';
 import 'screens/admin/admin_dashboard.dart';
 import 'screens/landlord/landlord_dashboard.dart';
+import 'screens/tenant/tenant_rent_collection_page.dart';
 import 'screens/jumaa_owner/jumaa_owner_dashboard.dart';
 import 'services/booking_service.dart';
 import 'services/notification_service.dart';
@@ -9050,7 +9051,7 @@ class _TenantDashboardPageState extends State<TenantDashboardPage> {
     ),
     const TenantAnnouncementsPage(),
     TenantNotificationsPage(tenantProfile: widget.tenantProfile),
-    PaymentsPage(tenantProfile: widget.tenantProfile),
+    TenantRentCollectionPage(tenantProfile: widget.tenantProfile),
     SettingsPage(
       isDarkMode: Theme.of(context).brightness == Brightness.dark,
       onDarkModeChanged: (enabled) {
@@ -9619,7 +9620,7 @@ class _TenantDashboardPageState extends State<TenantDashboardPage> {
       ),
       const TenantAnnouncementsPage(),
       TenantNotificationsPage(tenantProfile: widget.tenantProfile),
-      PaymentsPage(tenantProfile: widget.tenantProfile),
+      TenantRentCollectionPage(tenantProfile: widget.tenantProfile),
       SettingsPage(
         isDarkMode: Theme.of(context).brightness == Brightness.dark,
         onDarkModeChanged: (enabled) {
