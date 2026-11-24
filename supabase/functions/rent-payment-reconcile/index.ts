@@ -49,10 +49,18 @@ Deno.serve(async (req) => {
         updated_at: new Date().toISOString(),
       })
       .eq("id", paymentId).in("status", ["pending", "submitted"])
-      .select("id,status,amount,provider_reference,verified_at").maybeSingle();
+      .select("id,status,amount,provider_reference,receipt_number,verified_at").maybeSingle();
     if (updateError) throw updateError;
     if (!updated) return json({ error: "Payment changed while it was being reconciled. Refresh and try again." }, 409);
-    return json({ success: true, payment: updated });
+
+    // Allocation is idempotent and runs only after the payment is verified.
+    const { error: allocationError } = await admin.rpc("allocate_rent_payment", { p_payment_id: paymentId });
+    if (allocationError) {
+      console.error("Rent payment verified but allocation needs retry:", allocationError);
+      return json({ success: true, payment: updated, allocation_pending: true,
+        message: "Payment verified and receipt issued. Rent allocation needs administrator review." });
+    }
+    return json({ success: true, payment: updated, allocation_pending: false });
   } catch (error) {
     console.error("rent-payment-reconcile error", error);
     return json({ error: "Could not reconcile the rent payment." }, 500);
