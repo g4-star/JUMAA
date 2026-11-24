@@ -70,7 +70,10 @@ Future<void> _signInWithEmailOrPhone(String identifier, String password) async {
 
 bool _isValidKenyanMobileNumber(String value) {
   final digits = value.replaceAll(RegExp(r'\D'), '');
-  return RegExp(r'^(?:254[17]\d{8}|0[17]\d{8}|[17]\d{8})// ============================================================
+  return RegExp(r'^(?:254[17]\d{8}|0[17]\d{8}|[17]\d{8})$').hasMatch(digits);
+}
+
+// ============================================================
 
 class JumaaEmailService {
   static const String _functionUrl =
