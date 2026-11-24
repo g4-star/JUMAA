@@ -573,38 +573,30 @@ class _OpenNestAuthGateState extends State<OpenNestAuthGate> {
       // ----------------------------------------------------------
       // DETERMINE ACCOUNT ROLE
       // ----------------------------------------------------------
-      String? role = user.userMetadata?['role']
-          ?.toString()
-          .toLowerCase()
-          .trim();
+      // The database profile is the authority for role and account status.
+      // Auth user metadata is user-editable and must never grant a role.
+      final profile = await OpenNestStore.supabase
+          .from('profiles')
+          .select('role,account_status,suspension_reason')
+          .eq('id', user.id)
+          .maybeSingle();
 
-      String accountStatus = 'active';
-      String suspensionReason = '';
-
-      try {
-        final profile = await OpenNestStore.supabase
-            .from('profiles')
-            .select('role,account_status,suspension_reason')
-            .eq('id', user.id)
-            .maybeSingle();
-
-        if (profile != null) {
-          final profileRole = profile['role']?.toString().toLowerCase().trim();
-
-          if (profileRole != null && profileRole.isNotEmpty) {
-            role = profileRole;
-          }
-
-          accountStatus =
-              profile['account_status']?.toString().toLowerCase().trim() ??
-              'active';
-
-          suspensionReason =
-              profile['suspension_reason']?.toString().trim() ?? '';
+      final role = profile?['role']?.toString().toLowerCase().trim();
+      if (role == null || role.isEmpty) {
+        await OpenNestStore.supabase.auth.signOut();
+        if (mounted) {
+          setState(() {
+            _loggedIn = false;
+            _loading = false;
+          });
         }
-      } catch (e) {
-        // Profile loading failure is handled by the default account state.
+        return;
       }
+
+      final accountStatus =
+          profile?['account_status']?.toString().toLowerCase().trim() ?? 'active';
+      final suspensionReason =
+          profile?['suspension_reason']?.toString().trim() ?? '';
 
       // ----------------------------------------------------------
       // BLOCK SUSPENDED ACCOUNTS WITH EXISTING SESSIONS.
@@ -704,7 +696,7 @@ class _OpenNestAuthGateState extends State<OpenNestAuthGate> {
       // ----------------------------------------------------------
       // VALIDATE PROPERTY OWNER SESSION
       // ----------------------------------------------------------
-      if (role == 'owner' || role == null || role.isEmpty) {
+      if (role == 'owner') {
         await OpenNestStore.loadOwners();
 
         if (mounted) {
@@ -18363,49 +18355,29 @@ class _JUMAALoginPageState extends State<JUMAALoginPage> {
       // Owner accounts are created with role = owner.
       // Landlord accounts are created with role = landlord.
       // ----------------------------------------------------------
-      String? role = user.userMetadata?['role']
-          ?.toString()
-          .toLowerCase()
-          .trim();
+      // Read the server-owned profile before routing to any account area.
+      // Never trust the user-editable Auth metadata role as a fallback.
+      final profile = await OpenNestStore.supabase
+          .from('profiles')
+          .select('role,account_status,suspension_reason')
+          .eq('id', user.id)
+          .maybeSingle();
 
-      String accountStatus = 'active';
-      String suspensionReason = '';
-
-      debugPrint('JUMAA LOGIN: metadata role=$role');
-
-      // ----------------------------------------------------------
-      // Load the real profile from Supabase.
-      // This also gives us the account suspension state.
-      // ----------------------------------------------------------
-      try {
-        final profile = await OpenNestStore.supabase
-            .from('profiles')
-            .select('role,account_status,suspension_reason')
-            .eq('id', user.id)
-            .maybeSingle();
-
-        if (profile != null) {
-          final profileRole = profile['role']?.toString().toLowerCase().trim();
-
-          if (profileRole != null && profileRole.isNotEmpty) {
-            role = profileRole;
-          }
-
-          accountStatus =
-              profile['account_status']?.toString().toLowerCase().trim() ??
-              'active';
-
-          suspensionReason =
-              profile['suspension_reason']?.toString().trim() ?? '';
-        }
-
-        debugPrint(
-          'JUMAA LOGIN: profile role=$role '
-          'accountStatus=$accountStatus',
-        );
-      } catch (e) {
-        debugPrint('JUMAA LOGIN: Could not read profile: $e');
+      final role = profile?['role']?.toString().toLowerCase().trim();
+      if (role == null || role.isEmpty) {
+        await OpenNestStore.supabase.auth.signOut();
+        throw Exception('Your JUMAA account role is not configured. Contact support.');
       }
+
+      final accountStatus =
+          profile?['account_status']?.toString().toLowerCase().trim() ?? 'active';
+      final suspensionReason =
+          profile?['suspension_reason']?.toString().trim() ?? '';
+
+      debugPrint(
+        'JUMAA LOGIN: verified profile role=$role '
+        'accountStatus=$accountStatus',
+      );
 
       // ----------------------------------------------------------
       // BLOCK SUSPENDED ACCOUNTS.
@@ -18587,7 +18559,7 @@ class _JUMAALoginPageState extends State<JUMAALoginPage> {
       // ----------------------------------------------------------
       // PROPERTY OWNER LOGIN
       // ----------------------------------------------------------
-      if (role == 'owner' || role == null || role.isEmpty) {
+      if (role == 'owner') {
         debugPrint('JUMAA LOGIN: Owner account detected.');
 
         await OpenNestStore.loadOwners();
